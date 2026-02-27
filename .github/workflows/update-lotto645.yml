@@ -1,0 +1,35 @@
+name: Update Lotto645 Data
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 매일 00:15 KST = 15:15 UTC
+    - cron: "15 15 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-lotto645
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Update JSON
+        run: node scripts/update_lotto645.mjs
+
+      - name: Auto commit
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(data): update lotto645 draws & freq"
+          file_pattern: "data/lotto645_draws.json data/lotto645_freq.json"
