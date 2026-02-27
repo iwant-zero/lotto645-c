@@ -1,7 +1,12 @@
 // scripts/update_lotto645.mjs
 // Node 20+ (built-in fetch)
-// Updates:
-// - data/lotto645_draws.json (all draws)
+//
+// Fix: dhlottery API often returns HTML (queue/blocked) from GitHub Actions IPs,
+// causing "Unexpected token '<'". Use a stable public JSON mirror instead.
+// Source: https://smok95.github.io/lotto/results/all.json , latest.json
+//
+// Outputs:
+// - data/lotto645_draws.json (simplified draws list)
 // - data/lotto645_freq.json  (overall + recent(last N draws: 10/20/30))
 
 import fs from "node:fs/promises";
@@ -14,149 +19,17 @@ const DATA_DIR = path.join(ROOT, "data");
 const DRAWS_PATH = path.join(DATA_DIR, "lotto645_draws.json");
 const FREQ_PATH = path.join(DATA_DIR, "lotto645_freq.json");
 
-// Widely used JSON endpoint
-const ENDPOINT = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=";
+// Public JSON mirror (GitHub Pages)
+const SMOK_BASE = "https://smok95.github.io/lotto/results";
+const SMOK_ALL = `${SMOK_BASE}/all.json`;
+const SMOK_LATEST = `${SMOK_BASE}/latest.json`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function readJsonSafe(p, fallback) {
-  try {
-    const s = await fs.readFile(p, "utf-8");
-    return JSON.parse(s);
-  } catch {
-    return fallback;
-  }
-}
 
 async function writeJson(p, obj) {
   const s = JSON.stringify(obj, null, 2);
   await fs.mkdir(path.dirname(p), { recursive: true });
   await fs.writeFile(p, s, "utf-8");
-}
-
-function isSuccess(data) {
-  return data && data.returnValue === "success" && Number.isFinite(Number(data.drwNo));
-}
-
-async function fetchDraw(drwNo) {
-  const url = `${ENDPOINT}${drwNo}`;
-  const res = await fetch(url, {
-    headers: {
-      "user-agent": "github-actions-lotto645-updater/1.1",
-      accept: "application/json,text/plain,*/*",
-    },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status} for drwNo=${drwNo}`);
-  const data = await res.json();
-  if (!isSuccess(data)) return null;
-
-  const nums = [
-    data.drwtNo1,
-    data.drwtNo2,
-    data.drwtNo3,
-    data.drwtNo4,
-    data.drwtNo5,
-    data.drwtNo6,
-  ]
-    .map((x) => Number(x))
-    .filter((x) => Number.isFinite(x));
-
-  if (nums.length !== 6) return null;
-
-  nums.sort((a, b) => a - b);
-
-  return {
-    drwNo: Number(data.drwNo),
-    date: String(data.drwNoDate), // YYYY-MM-DD
-    numbers: nums,
-    bonus: Number(data.bnusNo),
-  };
-}
-
-async function existsDraw(drwNo) {
-  const d = await fetchDraw(drwNo);
-  return d !== null;
-}
-
-async function findMaxDrawNo(lastKnown) {
-  // Fast path: probe forward from lastKnown
-  if (lastKnown && lastKnown > 0) {
-    let n = lastKnown;
-    for (let i = 0; i < 50; i++) {
-      const next = n + 1;
-      const ok = await existsDraw(next);
-      if (!ok) return n;
-      n = next;
-      await sleep(120);
-    }
-    return n;
-  }
-
-  // Bootstrap: exponential search then binary search
-  let low = 0;
-  let high = 1;
-
-  while (true) {
-    const ok = await existsDraw(high);
-    if (!ok) break;
-    low = high;
-    high *= 2;
-    await sleep(120);
-    if (high > 100000) throw new Error("Unreasonable high drwNo; abort.");
-  }
-
-  let lo = low + 1;
-  let hi = high - 1;
-  let best = low;
-
-  while (lo <= hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    const ok = await existsDraw(mid);
-    if (ok) {
-      best = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-    await sleep(120);
-  }
-  return best;
-}
-
-async function fetchRangeConcurrently(from, to, concurrency = 8) {
-  const out = [];
-  let cursor = from;
-  let active = 0;
-
-  return await new Promise((resolve, reject) => {
-    const pump = async () => {
-      while (active < concurrency && cursor <= to) {
-        const n = cursor++;
-        active++;
-        (async () => {
-          try {
-            const d = await fetchDraw(n);
-            if (d) out.push(d);
-          } catch (e) {
-            // retry once
-            try {
-              await sleep(220);
-              const d2 = await fetchDraw(n);
-              if (d2) out.push(d2);
-            } catch (e2) {
-              reject(new Error(`Failed fetching drwNo=${n}: ${e2?.message || e2}`));
-              return;
-            }
-          } finally {
-            active--;
-            if (cursor > to && active === 0) resolve(out);
-            else pump();
-          }
-        })();
-      }
-    };
-    pump();
-  });
 }
 
 function initCounter() {
@@ -178,7 +51,7 @@ function makeFreq(draws) {
     addCount(overallBonus, d.bonus, 1);
   }
 
-  // 최근 N회차
+  // recent N draws
   const windows = [10, 20, 30];
   const recent = {};
 
@@ -207,41 +80,120 @@ function makeFreq(draws) {
   return { overall: { main: overallMain, bonus: overallBonus }, recent };
 }
 
+async function fetchTextWithTimeout(url, ms = 20000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        // GitHub Pages는 대체로 필요없지만, 안정성을 위해
+        "user-agent": "github-actions-lotto645-updater/2.0",
+        accept: "application/json,text/plain,*/*",
+      },
+      redirect: "follow",
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}\n${text.slice(0, 200)}`);
+    }
+    return text;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function fetchJsonGuarded(url) {
+  // 일부 환경에서 JSON 대신 HTML이 올 수 있어 텍스트로 받고 직접 파싱
+  const text = await fetchTextWithTimeout(url, 25000);
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html") || trimmed.startsWith("<")) {
+    throw new Error(`Expected JSON but got HTML from ${url}\n${trimmed.slice(0, 180)}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error(`JSON parse failed from ${url}: ${e?.message || e}`);
+  }
+}
+
+function toYmd(isoOrYmd) {
+  // "2026-02-21T00:00:00Z" -> "2026-02-21"
+  if (!isoOrYmd) return null;
+  const s = String(isoOrYmd);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function normalizeDrawFromSmok(item) {
+  // smok95 format:
+  // { draw_no, numbers:[..], bonus_no, date:"YYYY-MM-DDT00:00:00Z", ... }
+  const drwNo = Number(item.draw_no);
+  const nums = Array.isArray(item.numbers) ? item.numbers.map(Number) : [];
+  const bonus = Number(item.bonus_no);
+  const date = toYmd(item.date);
+
+  if (!Number.isFinite(drwNo) || nums.length !== 6 || !date) return null;
+  const sorted = nums.slice().sort((a, b) => a - b);
+
+  return { drwNo, date, numbers: sorted, bonus };
+}
+
 async function main() {
   await fs.mkdir(DATA_DIR, { recursive: true });
 
-  const existingDraws = await readJsonSafe(DRAWS_PATH, []);
-  const byNo = new Map();
-  for (const d of existingDraws) {
-    if (d && Number.isFinite(d.drwNo)) byNo.set(Number(d.drwNo), d);
+  console.log(`[lotto645] fetching: ${SMOK_LATEST}`);
+  const latest = await fetchJsonGuarded(SMOK_LATEST);
+  const latestNo = Number(latest?.draw_no);
+  console.log(`[lotto645] latest draw_no=${latestNo}`);
+
+  console.log(`[lotto645] fetching: ${SMOK_ALL}`);
+  // retry a couple times for network flakiness
+  let all = null;
+  for (let i = 0; i < 3; i++) {
+    try {
+      all = await fetchJsonGuarded(SMOK_ALL);
+      break;
+    } catch (e) {
+      if (i === 2) throw e;
+      await sleep(500 + i * 500);
+    }
   }
 
-  const lastKnown = existingDraws.length
-    ? Math.max(...existingDraws.map((d) => Number(d.drwNo)).filter(Number.isFinite))
-    : 0;
+  if (!Array.isArray(all) || all.length === 0) {
+    throw new Error("SMOK_ALL returned empty/non-array JSON");
+  }
 
-  console.log(`[lotto645] lastKnown=${lastKnown}`);
+  const mapped = [];
+  for (const it of all) {
+    const d = normalizeDrawFromSmok(it);
+    if (d) mapped.push(d);
+  }
 
-  // Re-fetch last 5 draws for safety
-  const refetchFrom = Math.max(1, lastKnown - 5);
+  if (!mapped.length) throw new Error("No valid draws parsed from SMOK_ALL");
 
-  const maxNo = await findMaxDrawNo(lastKnown);
-  console.log(`[lotto645] maxNo=${maxNo}`);
+  mapped.sort((a, b) => a.drwNo - b.drwNo);
 
-  const fetched = await fetchRangeConcurrently(refetchFrom, maxNo, 8);
-  for (const d of fetched) byNo.set(d.drwNo, d);
+  // if latest.json says a newer draw exists, ensure we have it
+  const last = mapped[mapped.length - 1];
+  if (Number.isFinite(latestNo) && last.drwNo < latestNo) {
+    console.warn(
+      `[lotto645] Warning: all.json last=${last.drwNo} < latest=${latestNo}. ` +
+      `Mirror may be updating. Proceeding with last=${last.drwNo}.`
+    );
+  }
 
-  const draws = [...byNo.values()].sort((a, b) => a.drwNo - b.drwNo);
-  if (!draws.length) throw new Error("No draws fetched.");
-
-  const last = draws[draws.length - 1];
-  const freq = makeFreq(draws);
+  const freq = makeFreq(mapped);
 
   const payloadFreq = {
     updatedAt: new Date().toISOString(),
     source: {
-      endpoint: `${ENDPOINT}{drwNo}`,
-      note: "Fetched by GitHub Actions, served as static JSON for Pages.",
+      primary: "smok95.github.io",
+      endpoints: {
+        latest: SMOK_LATEST,
+        all: SMOK_ALL,
+      },
+      note:
+        "Using public JSON mirror because dhlottery often returns HTML (queue/blocked) from GitHub-hosted runners.",
     },
     lastDraw: {
       drwNo: last.drwNo,
@@ -249,15 +201,15 @@ async function main() {
       numbers: last.numbers,
       bonus: last.bonus,
     },
-    totalDraws: draws.length,
+    totalDraws: mapped.length,
     overall: freq.overall,
     recent: freq.recent, // keys: "10" | "20" | "30"
   };
 
-  await writeJson(DRAWS_PATH, draws);
+  await writeJson(DRAWS_PATH, mapped);
   await writeJson(FREQ_PATH, payloadFreq);
 
-  console.log(`[lotto645] wrote draws=${draws.length}`);
+  console.log(`[lotto645] wrote draws=${mapped.length}`);
   console.log(`[lotto645] lastDraw=${last.drwNo} (${last.date})`);
 }
 
