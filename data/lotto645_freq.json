@@ -1,12 +1,29 @@
 {
-  "updatedAt": "2026-02-27T23:27:04.896Z",
+  "updatedAt": "2026-02-27T23:38:34.635Z",
   "source": {
-    "primary": "smok95.github.io",
+    "primary": "smok95-pages",
+    "mode": "all.json",
+    "usedUrl": "https://smok95.github.io/lotto/results/all.json",
+    "attempts": [
+      "smok95-pages",
+      "smok95-raw",
+      "smok95-jsdelivr"
+    ],
+    "note": "Multi-source fallback: pages -> raw -> jsdelivr. If remote fetch fails, uses local cache to avoid Actions failure.",
     "endpoints": {
-      "latest": "https://smok95.github.io/lotto/results/latest.json",
-      "all": "https://smok95.github.io/lotto/results/all.json"
-    },
-    "note": "Using public JSON mirror because dhlottery often returns HTML (queue/blocked) from GitHub-hosted runners."
+      "pages": {
+        "latest": "https://smok95.github.io/lotto/results/latest.json",
+        "all": "https://smok95.github.io/lotto/results/all.json"
+      },
+      "raw": {
+        "latest": "https://raw.githubusercontent.com/smok95/lotto/main/results/latest.json",
+        "all": "https://raw.githubusercontent.com/smok95/lotto/main/results/all.json"
+      },
+      "jsdelivr": {
+        "latest": "https://cdn.jsdelivr.net/gh/smok95/lotto@main/results/latest.json",
+        "all": "https://cdn.jsdelivr.net/gh/smok95/lotto@main/results/all.json"
+      }
+    }
   },
   "lastDraw": {
     "drwNo": 1212,
