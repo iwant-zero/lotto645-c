@@ -1,0 +1,213 @@
+name: Lotto645 Issue Recommender
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  recommend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Decide trigger
+        id: trig
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const isIssue = !!context.payload.issue && !context.payload.comment;
+            const isComment = !!context.payload.comment;
+            let body = "";
+            if (isIssue) body = (context.payload.issue.body || "") + "\n" + (context.payload.issue.title || "");
+            if (isComment) body = (context.payload.comment.body || "");
+
+            const hasCmd = body.includes("/lotto645");
+            // 이슈 오픈은 body/title에 "lotto645" 들어가면 자동 댓글(원하면 바꿔)
+            const autoOnOpen = isIssue && /lotto645/i.test(body);
+            const run = hasCmd || autoOnOpen;
+
+            core.setOutput("run", run ? "1" : "0");
+            core.setOutput("body", body);
+
+      - name: Stop if not triggered
+        if: steps.trig.outputs.run != '1'
+        run: echo "No trigger."
+
+      - name: Build comment text
+        if: steps.trig.outputs.run == '1'
+        id: build
+        run: |
+          node <<'NODE' > comment.md
+          const fs = require("fs");
+
+          const freq = JSON.parse(fs.readFileSync("data/lotto645_freq.json","utf-8"));
+          const body = process.env.BODY || "";
+
+          // parse: /lotto645 [count] [window] [seed...]
+          // count: 1|5|10 (default 5)
+          // window: 30|60|90 (default 60)
+          // seed: rest (default: issue author login)
+          function pickInt(x, ok) {
+            const n = Number(x);
+            return ok.includes(n) ? n : null;
+          }
+
+          const m = body.match(/\/lotto645(?:\s+([0-9]+))?(?:\s+(30|60|90))?(?:\s+([^\n\r]+))?/i);
+          let count = 5, win = 60, seed = null;
+          if (m) {
+            const c = pickInt(m[1], [1,5,10]); if (c) count = c;
+            const w = pickInt(m[2], [30,60,90]); if (w) win = w;
+            seed = (m[3]||"").trim() || null;
+          }
+
+          const issue = JSON.parse(process.env.GH_EVENT);
+          const author = (issue?.issue?.user?.login) || (issue?.comment?.user?.login) || "user";
+          if (!seed) seed = author;
+
+          // deterministic hash + xorshift32
+          function fnv1a32(str){
+            let h = 0x811c9dc5;
+            for (let i=0;i<str.length;i++){
+              h ^= str.charCodeAt(i);
+              h = Math.imul(h, 0x01000193) >>> 0;
+            }
+            return h >>> 0;
+          }
+          function XorShift32(seed){
+            let x = (seed >>> 0) || 0x12345678;
+            return {
+              nextU32(){
+                x ^= (x << 13) >>> 0;
+                x ^= (x >>> 17) >>> 0;
+                x ^= (x << 5) >>> 0;
+                return x >>> 0;
+              },
+              nextFloat(){
+                return (this.nextU32() >>> 0) / 0x100000000;
+              }
+            };
+          }
+
+          function normalizeRanks(counts){
+            const arr = [];
+            for (let i=1;i<=45;i++) arr.push({n:i, c:Number(counts[i]||0)});
+            arr.sort((a,b)=> b.c - a.c || a.n - b.n);
+            const rank = {};
+            arr.forEach((o, idx)=> rank[o.n] = idx+1);
+            return rank;
+          }
+
+          const overallRank = normalizeRanks(freq.overall.main);
+          const recentRank = normalizeRanks(freq.recent[String(win)].main);
+
+          // recent weight: 30이 가장 큼
+          const rw = win===30 ? 0.60 : win===60 ? 0.45 : 0.35;
+          const ow = 1 - rw;
+
+          const scored = [];
+          for (let n=1;n<=45;n++){
+            const s = (46-overallRank[n]) * ow + (46-recentRank[n]) * rw;
+            scored.push({n, s});
+          }
+          scored.sort((a,b)=> b.s - a.s || a.n - b.n);
+
+          const top = scored.slice(0,15);
+          const mid = scored.slice(15,30);
+          const low = scored.slice(30,45);
+
+          const patterns = [
+            [2,2,2],
+            [3,2,1],
+            [2,3,1],
+            [1,3,2],
+            [3,1,2],
+            [2,1,3],
+          ];
+
+          function pickWeighted(list, rng, used){
+            // list: [{n,s}]
+            let sum = 0;
+            for (const o of list) if (!used.has(o.n)) sum += (o.s + 0.01);
+            if (sum <= 0) return null;
+            let t = rng.nextFloat() * sum;
+            for (const o of list){
+              if (used.has(o.n)) continue;
+              t -= (o.s + 0.01);
+              if (t <= 0) return o.n;
+            }
+            // fallback
+            for (const o of list) if (!used.has(o.n)) return o.n;
+            return null;
+          }
+
+          function makeSet(idx){
+            const base = `${seed}|issue:${author}|last:${freq.lastDraw.drwNo}|win:${win}|i:${idx}`;
+            const rng = XorShift32(fnv1a32(base));
+            const pat = patterns[idx % patterns.length];
+
+            const used = new Set();
+            const out = [];
+
+            for (let k=0;k<pat[0];k++){
+              const n = pickWeighted(top, rng, used); if (n==null) break;
+              used.add(n); out.push(n);
+            }
+            for (let k=0;k<pat[1];k++){
+              const n = pickWeighted(mid, rng, used); if (n==null) break;
+              used.add(n); out.push(n);
+            }
+            for (let k=0;k<pat[2];k++){
+              const n = pickWeighted(low, rng, used); if (n==null) break;
+              used.add(n); out.push(n);
+            }
+
+            out.sort((a,b)=>a-b);
+            return out;
+          }
+
+          const sets = [];
+          for (let i=0;i<count;i++){
+            sets.push(makeSet(i));
+          }
+
+          const lines = [];
+          lines.push(`## 🎯 Lotto645 추천 (${count}세트)`);
+          lines.push(`- 기준: 누적 빈도 + 최근 ${win}일 빈도 가중`);
+          lines.push(`- Seed: \`${seed}\``);
+          lines.push(`- Last Draw: ${freq.lastDraw.drwNo} (${freq.lastDraw.date})`);
+          lines.push("");
+          sets.forEach((s,i)=>{
+            lines.push(`**#${String(i+1).padStart(2,"0")}**  \`${s.join(", ")}\``);
+          });
+          lines.push("");
+          lines.push("> 참고: 빈도 기반 추천은 ‘과거 데이터 요약’이며 당첨을 보장하지 않습니다.");
+
+          process.stdout.write(lines.join("\n"));
+          NODE
+        env:
+          BODY: ${{ steps.trig.outputs.body }}
+          GH_EVENT: ${{ toJson(github.event) }}
+
+      - name: Post comment
+        if: steps.trig.outputs.run == '1'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const body = fs.readFileSync("comment.md","utf-8");
+            const issue_number = context.payload.issue?.number || context.payload.comment?.issue_url?.split("/").pop();
+            if (!issue_number) throw new Error("No issue number found");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(issue_number),
+              body
+            });
