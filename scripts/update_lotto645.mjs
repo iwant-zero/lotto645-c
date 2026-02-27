@@ -2,7 +2,7 @@
 // Node 20+ (built-in fetch)
 // Updates:
 // - data/lotto645_draws.json (all draws)
-// - data/lotto645_freq.json  (overall + recent(30/60/90 days) frequency)
+// - data/lotto645_freq.json  (overall + recent(last N draws: 10/20/30))
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -14,7 +14,7 @@ const DATA_DIR = path.join(ROOT, "data");
 const DRAWS_PATH = path.join(DATA_DIR, "lotto645_draws.json");
 const FREQ_PATH = path.join(DATA_DIR, "lotto645_freq.json");
 
-// Official-ish JSON endpoint widely used by developers
+// Widely used JSON endpoint
 const ENDPOINT = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -35,7 +35,6 @@ async function writeJson(p, obj) {
 }
 
 function isSuccess(data) {
-  // dhlottery returns { returnValue: "success" | "fail" ... }
   return data && data.returnValue === "success" && Number.isFinite(Number(data.drwNo));
 }
 
@@ -43,8 +42,8 @@ async function fetchDraw(drwNo) {
   const url = `${ENDPOINT}${drwNo}`;
   const res = await fetch(url, {
     headers: {
-      "user-agent": "github-actions-lotto645-updater/1.0",
-      "accept": "application/json,text/plain,*/*",
+      "user-agent": "github-actions-lotto645-updater/1.1",
+      accept: "application/json,text/plain,*/*",
     },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} for drwNo=${drwNo}`);
@@ -52,22 +51,26 @@ async function fetchDraw(drwNo) {
   if (!isSuccess(data)) return null;
 
   const nums = [
-    data.drwtNo1, data.drwtNo2, data.drwtNo3,
-    data.drwtNo4, data.drwtNo5, data.drwtNo6,
-  ].map((x) => Number(x)).filter((x) => Number.isFinite(x));
+    data.drwtNo1,
+    data.drwtNo2,
+    data.drwtNo3,
+    data.drwtNo4,
+    data.drwtNo5,
+    data.drwtNo6,
+  ]
+    .map((x) => Number(x))
+    .filter((x) => Number.isFinite(x));
 
   if (nums.length !== 6) return null;
 
   nums.sort((a, b) => a - b);
 
-  const draw = {
+  return {
     drwNo: Number(data.drwNo),
-    date: String(data.drwNoDate), // "YYYY-MM-DD"
+    date: String(data.drwNoDate), // YYYY-MM-DD
     numbers: nums,
     bonus: Number(data.bnusNo),
   };
-
-  return draw;
 }
 
 async function existsDraw(drwNo) {
@@ -76,7 +79,7 @@ async function existsDraw(drwNo) {
 }
 
 async function findMaxDrawNo(lastKnown) {
-  // If we already have lastKnown, just probe forward a little
+  // Fast path: probe forward from lastKnown
   if (lastKnown && lastKnown > 0) {
     let n = lastKnown;
     for (let i = 0; i < 50; i++) {
@@ -93,7 +96,6 @@ async function findMaxDrawNo(lastKnown) {
   let low = 0;
   let high = 1;
 
-  // Exponential: find first fail at high
   while (true) {
     const ok = await existsDraw(high);
     if (!ok) break;
@@ -103,7 +105,6 @@ async function findMaxDrawNo(lastKnown) {
     if (high > 100000) throw new Error("Unreasonable high drwNo; abort.");
   }
 
-  // Binary search between (low, high)
   let lo = low + 1;
   let hi = high - 1;
   let best = low;
@@ -137,9 +138,9 @@ async function fetchRangeConcurrently(from, to, concurrency = 8) {
             const d = await fetchDraw(n);
             if (d) out.push(d);
           } catch (e) {
-            // Network hiccup: retry once lightly
+            // retry once
             try {
-              await sleep(200);
+              await sleep(220);
               const d2 = await fetchDraw(n);
               if (d2) out.push(d2);
             } catch (e2) {
@@ -168,12 +169,7 @@ function addCount(counter, n, w = 1) {
   if (n >= 1 && n <= 45) counter[n] += w;
 }
 
-function parseDay(dateStr) {
-  // Stable parse: treat YYYY-MM-DD as UTC midnight
-  return new Date(`${dateStr}T00:00:00Z`).getTime();
-}
-
-function makeFreq(draws, refNowMs) {
+function makeFreq(draws) {
   const overallMain = initCounter();
   const overallBonus = initCounter();
 
@@ -182,29 +178,27 @@ function makeFreq(draws, refNowMs) {
     addCount(overallBonus, d.bonus, 1);
   }
 
-  const windows = [30, 60, 90];
+  // 최근 N회차
+  const windows = [10, 20, 30];
   const recent = {};
 
-  for (const days of windows) {
-    const cutoff = refNowMs - days * 24 * 60 * 60 * 1000;
+  for (const n of windows) {
+    const slice = draws.slice(-n);
     const main = initCounter();
     const bonus = initCounter();
-    let drawCount = 0;
-    let fromDate = null;
 
-    for (const d of draws) {
-      const t = parseDay(d.date);
-      if (t >= cutoff) {
-        drawCount++;
-        if (!fromDate || parseDay(d.date) < parseDay(fromDate)) fromDate = d.date;
-        for (const n of d.numbers) addCount(main, n, 1);
-        addCount(bonus, d.bonus, 1);
-      }
+    for (const d of slice) {
+      for (const x of d.numbers) addCount(main, x, 1);
+      addCount(bonus, d.bonus, 1);
     }
 
-    recent[String(days)] = {
-      from: fromDate,
-      drawCount,
+    const from = slice.length ? slice[0].date : null;
+    const to = slice.length ? slice[slice.length - 1].date : null;
+
+    recent[String(n)] = {
+      from,
+      to,
+      drawCount: slice.length,
       main,
       bonus,
     };
@@ -228,27 +222,20 @@ async function main() {
 
   console.log(`[lotto645] lastKnown=${lastKnown}`);
 
-  // Always re-fetch last 5 draws to absorb corrections (if any)
+  // Re-fetch last 5 draws for safety
   const refetchFrom = Math.max(1, lastKnown - 5);
 
   const maxNo = await findMaxDrawNo(lastKnown);
   console.log(`[lotto645] maxNo=${maxNo}`);
 
-  // Fetch range [refetchFrom..maxNo]
   const fetched = await fetchRangeConcurrently(refetchFrom, maxNo, 8);
-
   for (const d of fetched) byNo.set(d.drwNo, d);
 
   const draws = [...byNo.values()].sort((a, b) => a.drwNo - b.drwNo);
-
   if (!draws.length) throw new Error("No draws fetched.");
 
   const last = draws[draws.length - 1];
-
-  // Use latest draw date as reference (more stable than 'now')
-  const refNowMs = parseDay(last.date);
-
-  const freq = makeFreq(draws, refNowMs);
+  const freq = makeFreq(draws);
 
   const payloadFreq = {
     updatedAt: new Date().toISOString(),
@@ -264,7 +251,7 @@ async function main() {
     },
     totalDraws: draws.length,
     overall: freq.overall,
-    recent: freq.recent,
+    recent: freq.recent, // keys: "10" | "20" | "30"
   };
 
   await writeJson(DRAWS_PATH, draws);
