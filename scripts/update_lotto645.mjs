@@ -1,13 +1,12 @@
 // scripts/update_lotto645.mjs
 // Node 20+ (built-in fetch)
 //
-// Fix: dhlottery API often returns HTML (queue/blocked) from GitHub Actions IPs,
-// causing "Unexpected token '<'". Use a stable public JSON mirror instead.
-// Source: https://smok95.github.io/lotto/results/all.json , latest.json
-//
-// Outputs:
-// - data/lotto645_draws.json (simplified draws list)
-// - data/lotto645_freq.json  (overall + recent(last N draws: 10/20/30))
+// Robust updater with multi-source fallback (2~3+ backends):
+// 1) smok95 GitHub Pages
+// 2) raw.githubusercontent.com (same data, different infra)
+// 3) jsDelivr CDN (same repo path, CDN infra)
+// If all "all.json" fail: try incremental update using latest + per-draw json.
+// If even that fails but existing local draws exist: regenerate freq and exit 0 (keep Pages alive).
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -19,17 +18,113 @@ const DATA_DIR = path.join(ROOT, "data");
 const DRAWS_PATH = path.join(DATA_DIR, "lotto645_draws.json");
 const FREQ_PATH = path.join(DATA_DIR, "lotto645_freq.json");
 
-// Public JSON mirror (GitHub Pages)
-const SMOK_BASE = "https://smok95.github.io/lotto/results";
-const SMOK_ALL = `${SMOK_BASE}/all.json`;
-const SMOK_LATEST = `${SMOK_BASE}/latest.json`;
+const SOURCES = [
+  {
+    id: "smok95-pages",
+    allUrls: ["https://smok95.github.io/lotto/results/all.json"],
+    latestUrls: ["https://smok95.github.io/lotto/results/latest.json"],
+    drawUrl: (n) => `https://smok95.github.io/lotto/results/${n}.json`,
+  },
+  {
+    id: "smok95-raw",
+    allUrls: ["https://raw.githubusercontent.com/smok95/lotto/main/results/all.json"],
+    latestUrls: ["https://raw.githubusercontent.com/smok95/lotto/main/results/latest.json"],
+    drawUrl: (n) => `https://raw.githubusercontent.com/smok95/lotto/main/results/${n}.json`,
+  },
+  {
+    id: "smok95-jsdelivr",
+    // NOTE: jsDelivr usually supports GitHub repo assets as CDN
+    allUrls: ["https://cdn.jsdelivr.net/gh/smok95/lotto@main/results/all.json"],
+    latestUrls: ["https://cdn.jsdelivr.net/gh/smok95/lotto@main/results/latest.json"],
+    drawUrl: (n) => `https://cdn.jsdelivr.net/gh/smok95/lotto@main/results/${n}.json`,
+  },
+];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function readJsonSafe(p, fallback) {
+  try {
+    const s = await fs.readFile(p, "utf-8");
+    return JSON.parse(s);
+  } catch {
+    return fallback;
+  }
+}
 
 async function writeJson(p, obj) {
   const s = JSON.stringify(obj, null, 2);
   await fs.mkdir(path.dirname(p), { recursive: true });
   await fs.writeFile(p, s, "utf-8");
+}
+
+function isHtmlLike(text) {
+  const t = (text || "").trimStart();
+  return (
+    t.startsWith("<!DOCTYPE") ||
+    t.startsWith("<html") ||
+    t.startsWith("<head") ||
+    t.startsWith("<body") ||
+    t.startsWith("<")
+  );
+}
+
+async function fetchTextWithTimeout(url, ms = 25000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      redirect: "follow",
+      headers: {
+        "user-agent": "github-actions-lotto645-updater/3.0",
+        accept: "application/json,text/plain,*/*",
+      },
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}\n${text.slice(0, 200)}`);
+    }
+    return text;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function fetchJsonGuarded(url, retries = 2) {
+  let lastErr = null;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const text = await fetchTextWithTimeout(url, 25000 + i * 5000);
+      if (isHtmlLike(text)) {
+        throw new Error(`Expected JSON but got HTML from ${url}\n${text.trimStart().slice(0, 180)}`);
+      }
+      return JSON.parse(text);
+    } catch (e) {
+      lastErr = e;
+      if (i < retries) await sleep(400 + i * 600);
+    }
+  }
+  throw lastErr;
+}
+
+function toYmd(isoOrYmd) {
+  if (!isoOrYmd) return null;
+  const s = String(isoOrYmd);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function normalizeDrawFromSmok(item) {
+  // smok95 format:
+  // { draw_no, numbers:[..], bonus_no, date:"YYYY-MM-DDT00:00:00Z", ... }
+  const drwNo = Number(item?.draw_no);
+  const nums = Array.isArray(item?.numbers) ? item.numbers.map(Number) : [];
+  const bonus = Number(item?.bonus_no);
+  const date = toYmd(item?.date);
+
+  if (!Number.isFinite(drwNo) || nums.length !== 6 || !date) return null;
+
+  const sorted = nums.slice().sort((a, b) => a - b);
+  return { drwNo, date, numbers: sorted, bonus };
 }
 
 function initCounter() {
@@ -51,7 +146,6 @@ function makeFreq(draws) {
     addCount(overallBonus, d.bonus, 1);
   }
 
-  // recent N draws
   const windows = [10, 20, 30];
   const recent = {};
 
@@ -80,120 +174,186 @@ function makeFreq(draws) {
   return { overall: { main: overallMain, bonus: overallBonus }, recent };
 }
 
-async function fetchTextWithTimeout(url, ms = 20000) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
-      headers: {
-        // GitHub Pages는 대체로 필요없지만, 안정성을 위해
-        "user-agent": "github-actions-lotto645-updater/2.0",
-        accept: "application/json,text/plain,*/*",
-      },
-      redirect: "follow",
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}\n${text.slice(0, 200)}`);
+function mergeByNo(existingDraws, newDraws) {
+  const m = new Map();
+  for (const d of existingDraws || []) {
+    if (d && Number.isFinite(Number(d.drwNo))) m.set(Number(d.drwNo), d);
+  }
+  for (const d of newDraws || []) {
+    if (d && Number.isFinite(Number(d.drwNo))) m.set(Number(d.drwNo), d);
+  }
+  return [...m.values()].sort((a, b) => a.drwNo - b.drwNo);
+}
+
+async function tryFetchAllFromSource(src) {
+  for (const url of src.allUrls) {
+    const json = await fetchJsonGuarded(url, 2);
+    if (!Array.isArray(json) || json.length === 0) {
+      throw new Error(`[${src.id}] all.json is not a non-empty array: ${url}`);
     }
-    return text;
-  } finally {
-    clearTimeout(t);
+    const mapped = [];
+    for (const it of json) {
+      const d = normalizeDrawFromSmok(it);
+      if (d) mapped.push(d);
+    }
+    if (!mapped.length) {
+      throw new Error(`[${src.id}] parsed 0 valid draws from: ${url}`);
+    }
+    mapped.sort((a, b) => a.drwNo - b.drwNo);
+    return { draws: mapped, usedUrl: url };
   }
+  throw new Error(`[${src.id}] no allUrls worked`);
 }
 
-async function fetchJsonGuarded(url) {
-  // 일부 환경에서 JSON 대신 HTML이 올 수 있어 텍스트로 받고 직접 파싱
-  const text = await fetchTextWithTimeout(url, 25000);
-  const trimmed = text.trimStart();
-  if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html") || trimmed.startsWith("<")) {
-    throw new Error(`Expected JSON but got HTML from ${url}\n${trimmed.slice(0, 180)}`);
+async function tryFetchLatestNoFromSource(src) {
+  for (const url of src.latestUrls) {
+    const obj = await fetchJsonGuarded(url, 2);
+    const n = Number(obj?.draw_no);
+    if (Number.isFinite(n) && n > 0) return { latestNo: n, usedUrl: url };
   }
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    throw new Error(`JSON parse failed from ${url}: ${e?.message || e}`);
-  }
+  throw new Error(`[${src.id}] no latestUrls worked`);
 }
 
-function toYmd(isoOrYmd) {
-  // "2026-02-21T00:00:00Z" -> "2026-02-21"
-  if (!isoOrYmd) return null;
-  const s = String(isoOrYmd);
-  return s.length >= 10 ? s.slice(0, 10) : s;
-}
-
-function normalizeDrawFromSmok(item) {
-  // smok95 format:
-  // { draw_no, numbers:[..], bonus_no, date:"YYYY-MM-DDT00:00:00Z", ... }
-  const drwNo = Number(item.draw_no);
-  const nums = Array.isArray(item.numbers) ? item.numbers.map(Number) : [];
-  const bonus = Number(item.bonus_no);
-  const date = toYmd(item.date);
-
-  if (!Number.isFinite(drwNo) || nums.length !== 6 || !date) return null;
-  const sorted = nums.slice().sort((a, b) => a - b);
-
-  return { drwNo, date, numbers: sorted, bonus };
+async function tryFetchOneDrawAcrossSources(drawNo) {
+  let lastErr = null;
+  for (const src of SOURCES) {
+    const url = src.drawUrl(drawNo);
+    try {
+      const obj = await fetchJsonGuarded(url, 2);
+      const d = normalizeDrawFromSmok(obj);
+      if (d) return { draw: d, sourceId: src.id, usedUrl: url };
+      lastErr = new Error(`[${src.id}] draw json invalid: ${url}`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error(`Failed to fetch draw ${drawNo}`);
 }
 
 async function main() {
   await fs.mkdir(DATA_DIR, { recursive: true });
 
-  console.log(`[lotto645] fetching: ${SMOK_LATEST}`);
-  const latest = await fetchJsonGuarded(SMOK_LATEST);
-  const latestNo = Number(latest?.draw_no);
-  console.log(`[lotto645] latest draw_no=${latestNo}`);
+  const existing = await readJsonSafe(DRAWS_PATH, []);
+  const existingLastNo =
+    existing.length > 0
+      ? Math.max(...existing.map((d) => Number(d?.drwNo)).filter(Number.isFinite))
+      : 0;
 
-  console.log(`[lotto645] fetching: ${SMOK_ALL}`);
-  // retry a couple times for network flakiness
-  let all = null;
-  for (let i = 0; i < 3; i++) {
+  console.log(`[lotto645] existing draws=${existing.length}, lastNo=${existingLastNo}`);
+
+  // 1) Try "all.json" with automatic fallback
+  let used = {
+    mode: "all.json",
+    sourceId: null,
+    url: null,
+    attempts: SOURCES.map((s) => s.id),
+  };
+
+  let draws = null;
+
+  for (const src of SOURCES) {
     try {
-      all = await fetchJsonGuarded(SMOK_ALL);
+      console.log(`[lotto645] try all.json from ${src.id} ...`);
+      const got = await tryFetchAllFromSource(src);
+      draws = got.draws;
+      used.sourceId = src.id;
+      used.url = got.usedUrl;
+      console.log(`[lotto645] success all.json via ${src.id}`);
       break;
     } catch (e) {
-      if (i === 2) throw e;
-      await sleep(500 + i * 500);
+      console.warn(`[lotto645] failed all.json via ${src.id}: ${e?.message || e}`);
     }
   }
 
-  if (!Array.isArray(all) || all.length === 0) {
-    throw new Error("SMOK_ALL returned empty/non-array JSON");
+  // 2) If all.json failed, try incremental update using latest + per-draw json
+  if (!draws) {
+    used.mode = "incremental";
+    console.warn("[lotto645] all sources failed for all.json. Trying incremental update...");
+
+    let latestNo = 0;
+    let latestFrom = null;
+
+    for (const src of SOURCES) {
+      try {
+        console.log(`[lotto645] try latest.json from ${src.id} ...`);
+        const got = await tryFetchLatestNoFromSource(src);
+        latestNo = got.latestNo;
+        latestFrom = { sourceId: src.id, url: got.usedUrl };
+        console.log(`[lotto645] latestNo=${latestNo} via ${src.id}`);
+        break;
+      } catch (e) {
+        console.warn(`[lotto645] failed latest.json via ${src.id}: ${e?.message || e}`);
+      }
+    }
+
+    if (latestNo > 0 && existingLastNo > 0 && latestNo >= existingLastNo) {
+      let merged = existing.slice();
+      let fetchedCount = 0;
+
+      for (let n = existingLastNo + 1; n <= latestNo; n++) {
+        try {
+          const got = await tryFetchOneDrawAcrossSources(n);
+          merged = mergeByNo(merged, [got.draw]);
+          fetchedCount++;
+          console.log(`[lotto645] fetched draw ${n} via ${got.sourceId}`);
+        } catch (e) {
+          console.warn(`[lotto645] failed fetch draw ${n}: ${e?.message || e}`);
+          // stop early: better keep old data than fail job
+          break;
+        }
+      }
+
+      draws = merged;
+      used.sourceId = latestFrom?.sourceId || "unknown";
+      used.url = latestFrom?.url || null;
+      used.note = `incremental fetched=${fetchedCount}, latestNo=${latestNo}`;
+    } else {
+      // If we can't incrementally update, fall back to existing data (keep Actions green)
+      if (existing.length > 0) {
+        draws = existing;
+        used.mode = "local-only";
+        used.sourceId = "local-cache";
+        used.note =
+          latestNo > 0
+            ? `latestNo=${latestNo}, but existingLastNo=${existingLastNo} (or missing). Using local cache.`
+            : "cannot determine latestNo. Using local cache.";
+      }
+    }
   }
 
-  const mapped = [];
-  for (const it of all) {
-    const d = normalizeDrawFromSmok(it);
-    if (d) mapped.push(d);
+  if (!draws || draws.length === 0) {
+    throw new Error("No draws available (all sources failed and no local cache).");
   }
 
-  if (!mapped.length) throw new Error("No valid draws parsed from SMOK_ALL");
+  draws.sort((a, b) => a.drwNo - b.drwNo);
+  const last = draws[draws.length - 1];
 
-  mapped.sort((a, b) => a.drwNo - b.drwNo);
-
-  // if latest.json says a newer draw exists, ensure we have it
-  const last = mapped[mapped.length - 1];
-  if (Number.isFinite(latestNo) && last.drwNo < latestNo) {
-    console.warn(
-      `[lotto645] Warning: all.json last=${last.drwNo} < latest=${latestNo}. ` +
-      `Mirror may be updating. Proceeding with last=${last.drwNo}.`
-    );
-  }
-
-  const freq = makeFreq(mapped);
+  const freq = makeFreq(draws);
 
   const payloadFreq = {
     updatedAt: new Date().toISOString(),
     source: {
-      primary: "smok95.github.io",
-      endpoints: {
-        latest: SMOK_LATEST,
-        all: SMOK_ALL,
-      },
+      primary: used.sourceId,
+      mode: used.mode,
+      usedUrl: used.url,
+      attempts: used.attempts,
       note:
-        "Using public JSON mirror because dhlottery often returns HTML (queue/blocked) from GitHub-hosted runners.",
+        used.note ||
+        "Multi-source fallback: pages -> raw -> jsdelivr. If remote fetch fails, uses local cache to avoid Actions failure.",
+      endpoints: {
+        pages: {
+          latest: "https://smok95.github.io/lotto/results/latest.json",
+          all: "https://smok95.github.io/lotto/results/all.json",
+        },
+        raw: {
+          latest: "https://raw.githubusercontent.com/smok95/lotto/main/results/latest.json",
+          all: "https://raw.githubusercontent.com/smok95/lotto/main/results/all.json",
+        },
+        jsdelivr: {
+          latest: "https://cdn.jsdelivr.net/gh/smok95/lotto@main/results/latest.json",
+          all: "https://cdn.jsdelivr.net/gh/smok95/lotto@main/results/all.json",
+        },
+      },
     },
     lastDraw: {
       drwNo: last.drwNo,
@@ -201,16 +361,18 @@ async function main() {
       numbers: last.numbers,
       bonus: last.bonus,
     },
-    totalDraws: mapped.length,
+    totalDraws: draws.length,
     overall: freq.overall,
-    recent: freq.recent, // keys: "10" | "20" | "30"
+    recent: freq.recent, // "10" | "20" | "30"
   };
 
-  await writeJson(DRAWS_PATH, mapped);
+  // Always write draws + freq (even if local-only) so Pages keeps running
+  await writeJson(DRAWS_PATH, draws);
   await writeJson(FREQ_PATH, payloadFreq);
 
-  console.log(`[lotto645] wrote draws=${mapped.length}`);
+  console.log(`[lotto645] wrote draws=${draws.length}`);
   console.log(`[lotto645] lastDraw=${last.drwNo} (${last.date})`);
+  console.log(`[lotto645] mode=${used.mode}, source=${used.sourceId}`);
 }
 
 main().catch((e) => {
