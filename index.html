@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>로또645 빈도 기반 추천기 (결정론 순환)</title>
+  <meta name="theme-color" content="#0b1220" />
+  <style>
+    :root{
+      --bg:#0b1220; --card:#121b2e; --card2:#0f1730; --txt:#e8eefc; --muted:#9db0d3;
+      --line:rgba(255,255,255,.10); --accent:#64d2ff; --accent2:#a7f3d0;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif;background:var(--bg);color:var(--txt)}
+    a{color:inherit}
+    .wrap{max-width:980px;margin:0 auto;padding:18px}
+    .top{
+      display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;
+      padding:14px 14px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));
+      border-radius:16px;
+    }
+    .title{font-size:18px;font-weight:800;letter-spacing:-.2px}
+    .sub{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.35}
+    .badge{display:inline-flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .pill{
+      padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);
+      font-size:12px;color:var(--muted)
+    }
+    .grid{
+      margin-top:14px;
+      display:grid;grid-template-columns:1fr;gap:12px;
+    }
+    @media(min-width:860px){
+      .grid{grid-template-columns: 1.1fr .9fr;}
+    }
+    .card{
+      padding:14px;border:1px solid var(--line);background:var(--card);border-radius:16px;
+    }
+    .card h3{margin:0 0 10px 0;font-size:14px;color:#d6e3ff}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .row > *{flex:0 0 auto}
+    .input{
+      flex:1 1 240px;
+      display:flex;gap:8px;align-items:center;
+      border:1px solid var(--line);background:rgba(0,0,0,.18);
+      border-radius:12px;padding:10px 10px;
+    }
+    .input input{
+      width:100%;border:0;outline:0;background:transparent;color:var(--txt);
+      font-size:14px;
+    }
+    .btn{
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.04);
+      color:var(--txt);
+      padding:10px 12px;border-radius:12px;
+      font-weight:700;font-size:13px;
+      cursor:pointer;
+      user-select:none;
+    }
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{border-color:rgba(100,210,255,.35);background:rgba(100,210,255,.12)}
+    .btn.good{border-color:rgba(167,243,208,.35);background:rgba(167,243,208,.10)}
+    .btn.small{padding:8px 10px;border-radius:10px;font-size:12px}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap}
+    .tab{padding:8px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);cursor:pointer;font-weight:800;font-size:12px;color:var(--muted)}
+    .tab.on{color:var(--txt);border-color:rgba(100,210,255,.35);background:rgba(100,210,255,.10)}
+    .hr{height:1px;background:var(--line);margin:12px 0}
+    .out{display:flex;flex-direction:column;gap:10px}
+    .set{
+      border:1px solid var(--line);background:var(--card2);border-radius:14px;padding:12px;
+      display:flex;flex-direction:column;gap:10px;
+    }
+    .sethead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+    .settitle{font-weight:900;font-size:13px;color:#d6e3ff}
+    .meta{font-size:12px;color:var(--muted)}
+    .balls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .ball{
+      width:38px;height:38px;border-radius:999px;display:flex;align-items:center;justify-content:center;
+      font-weight:900;
+      border:1px solid rgba(255,255,255,.20);
+      box-shadow: 0 8px 16px rgba(0,0,0,.22) inset, 0 10px 22px rgba(0,0,0,.20);
+    }
+    .b1{background:linear-gradient(180deg,#ffd166,#f59e0b);color:#1c1400}     /* 1-10 */
+    .b2{background:linear-gradient(180deg,#8ec5ff,#3b82f6);color:#001225}     /* 11-20 */
+    .b3{background:linear-gradient(180deg,#ff8fb1,#ef4444);color:#2a0008}     /* 21-30 */
+    .b4{background:linear-gradient(180deg,#bff4c8,#22c55e);color:#052012}     /* 31-40 */
+    .b5{background:linear-gradient(180deg,#d2d2d2,#9ca3af);color:#111827}     /* 41-45 */
+    .hint{font-size:12px;color:var(--muted);line-height:1.45}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+    .footer{margin:18px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div class="title">로또645 빈도 기반 추천기 <span class="mono" style="opacity:.7">v1</span></div>
+        <div class="sub">
+          무작위(Math.random/crypto) 없이 <b>결정론(데이터+cycle+seed)</b>로만 추천을 순환 생성합니다.<br/>
+          여러 사람이 눌러도 <b>기기 seed</b>가 달라 기본적으로 겹침이 줄어듭니다. (원하면 seed를 직접 공유)
+        </div>
+        <div class="badge">
+          <span class="pill" id="p-last">Last: -</span>
+          <span class="pill" id="p-updated">Updated: -</span>
+          <span class="pill" id="p-cycle">Cycle: -</span>
+        </div>
+      </div>
+      <div class="tabs" id="tabs">
+        <div class="tab on" data-win="30">최근 30일</div>
+        <div class="tab" data-win="60">최근 60일</div>
+        <div class="tab" data-win="90">최근 90일</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>추천 설정</h3>
+
+        <div class="row">
+          <div class="input" title="사람끼리 seed를 다르게 쓰면 겹침이 확 줄어듭니다.">
+            <span class="mono" style="color:var(--muted);font-weight:800">SEED</span>
+            <input id="seed" placeholder="예: TEAM-A / 닉네임 / 2026-02-28-1" />
+          </div>
+          <div class="row">
+            <div class="btn small" id="saveSeed">저장</div>
+            <div class="btn small" id="shareLink">링크복사</div>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row" style="justify-content:space-between">
+          <div class="hint">
+            <b>cycle</b>이 1 증가할 때마다 다른 조합으로 순환합니다.<br/>
+            점프 후 추천을 누르면 “큰 폭”으로 순환이 이동합니다.
+          </div>
+          <div class="row">
+            <div class="btn small" id="jump50">+50</div>
+            <div class="btn small" id="jump100">+100</div>
+            <div class="btn small" id="jump500">+500</div>
+            <div class="btn small" id="resetCycle">reset</div>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <div class="btn primary" data-cnt="1">1개 추천</div>
+          <div class="btn primary" data-cnt="5">5개 추천</div>
+          <div class="btn primary" data-cnt="10">10개 추천</div>
+          <div class="btn good" id="regen">같은 cycle에서 재생성(순서 회전)</div>
+        </div>
+
+        <div class="footer">
+          ※ 로또 6/45의 1~3등은 “같은 6개 당첨번호(보너스 포함 여부만 다름)” 구조라,
+          본 추천은 각 회차의 <b>당첨 6개 번호</b>의 빈도를 중심으로 계산합니다.
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>추천 결과</h3>
+        <div class="out" id="out">
+          <div class="hint">데이터 로딩 중…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ---------- Deterministic utils (NO Math.random / NO crypto random) ----------
+  function fnv1a32(str){
+    let h = 0x811c9dc5;
+    for (let i=0;i<str.length;i++){
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h >>> 0;
+  }
+
+  function XorShift32(seed){
+    let x = (seed >>> 0) || 0x12345678;
+    return {
+      nextU32(){
+        x ^= (x << 13) >>> 0;
+        x ^= (x >>> 17) >>> 0;
+        x ^= (x << 5) >>> 0;
+        return x >>> 0;
+      },
+      nextFloat(){
+        return (this.nextU32() >>> 0) / 0x100000000;
+      }
+    };
+  }
+
+  function clamp(n,a,b){ return Math.max(a, Math.min(b,n)); }
+
+  function ballClass(n){
+    if (n<=10) return "b1";
+    if (n<=20) return "b2";
+    if (n<=30) return "b3";
+    if (n<=40) return "b4";
+    return "b5";
+  }
+
+  function sum(arr){ return arr.reduce((p,c)=>p+c,0); }
+  function oddEven(arr){
+    let o=0,e=0;
+    for (const n of arr) (n%2?o++:e++);
+    return {o,e};
+  }
+  function hiLo(arr){
+    let lo=0, hi=0;
+    for (const n of arr) (n<=22?lo++:hi++);
+    return {lo,hi};
+  }
+
+  // ---------- Storage ----------
+  const LS = {
+    deviceSeed: "lotto645_device_seed_v1",
+    userSeed: "lotto645_user_seed_v1",
+    win: "lotto645_win_v1",
+    cycleBase: (win) => `lotto645_cycle_${win}_v1`,
+    regenRot: (win) => `lotto645_regenrot_${win}_v1`,
+    seen: (win) => `lotto645_seen_${win}_v1`,
+  };
+
+  function getLS(k, d=null){
+    try{
+      const v = localStorage.getItem(k);
+      return v==null ? d : v;
+    }catch{ return d; }
+  }
+  function setLS(k,v){
+    try{ localStorage.setItem(k, String(v)); }catch{}
+  }
+
+  function getDeviceSeed(){
+    let s = getLS(LS.deviceSeed, "");
+    if (s) return s;
+    // 결정론 입력값(기기 환경 기반 문자열) -> hash
+    const raw = [
+      navigator.userAgent || "",
+      navigator.language || "",
+      String(screen.width||0),
+      String(screen.height||0),
+      String(devicePixelRatio||1),
+      (Intl.DateTimeFormat().resolvedOptions().timeZone || ""),
+    ].join("|");
+    s = "D-" + fnv1a32(raw).toString(16);
+    setLS(LS.deviceSeed, s);
+    return s;
+  }
+
+  // ---------- Data loading (with path fallback) ----------
+  async function fetchFirstOk(urls){
+    let lastErr = null;
+    for (const u of urls){
+      try{
+        const res = await fetch(u, { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return await res.json();
+      }catch(e){ lastErr = e; }
+    }
+    throw lastErr || new Error("fetch failed");
+  }
+
+  let DATA = null;
+
+  // ---------- Scoring ----------
+  function normalizeRanks(counts){
+    const arr = [];
+    for (let i=1;i<=45;i++){
+      arr.push({n:i, c:Number(counts[i]||0)});
+    }
+    arr.sort((a,b)=> b.c - a.c || a.n - b.n);
+    const rank = {};
+    arr.forEach((o, idx)=> rank[o.n] = idx+1);
+    return rank; // 1..45 (1=top)
+  }
+
+  function getWeights(win){
+    // win이 짧을수록 "최근" 가중이 더 큼
+    if (win===30) return {rw:0.60, ow:0.40};
+    if (win===60) return {rw:0.45, ow:0.55};
+    return {rw:0.35, ow:0.65};
+  }
+
+  function buildScoredNumbers(win){
+    const overallRank = normalizeRanks(DATA.overall.main);
+    const recentRank = normalizeRanks(DATA.recent[String(win)].main);
+    const {rw, ow} = getWeights(win);
+
+    const scored = [];
+    for (let n=1;n<=45;n++){
+      const s = (46-overallRank[n]) * ow + (46-recentRank[n]) * rw;
+      scored.push({n, s});
+    }
+    scored.sort((a,b)=> b.s - a.s || a.n - b.n);
+    return scored;
+  }
+
+  // ---------- Deterministic pick w/ band dispersion ----------
+  const PATTERNS = [
+    [2,2,2],
+    [3,2,1],
+    [2,3,1],
+    [1,3,2],
+    [3,1,2],
+    [2,1,3],
+  ];
+
+  function pickWeighted(list, rng, used){
+    let total = 0;
+    for (const o of list){
+      if (!used.has(o.n)) total += (o.s + 0.01);
+    }
+    if (total <= 0) return null;
+    let t = rng.nextFloat() * total;
+    for (const o of list){
+      if (used.has(o.n)) continue;
+      t -= (o.s + 0.01);
+      if (t <= 0) return o.n;
+    }
+    for (const o of list){
+      if (!used.has(o.n)) return o.n;
+    }
+    return null;
+  }
+
+  function makeOneSet(scored, win, cycle, setIndex, seedString, regenRotate){
+    const top = scored.slice(0,15);
+    const mid = scored.slice(15,30);
+    const low = scored.slice(30,45);
+
+    // regenRotate: 같은 cycle에서 “순서 회전”용 (패턴/초기 state만 바꿈)
+    const pat = PATTERNS[(cycle + setIndex + regenRotate) % PATTERNS.length];
+
+    const base = `${seedString}|last:${DATA.lastDraw.drwNo}|win:${win}|cycle:${cycle}|set:${setIndex}|rot:${regenRotate}`;
+    const rng = XorShift32(fnv1a32(base));
+
+    const used = new Set();
+    const out = [];
+
+    for (let k=0;k<pat[0];k++){
+      const n = pickWeighted(top, rng, used); if (n==null) break;
+      used.add(n); out.push(n);
+    }
+    for (let k=0;k<pat[1];k++){
+      const n = pickWeighted(mid, rng, used); if (n==null) break;
+      used.add(n); out.push(n);
+    }
+    for (let k=0;k<pat[2];k++){
+      const n = pickWeighted(low, rng, used); if (n==null) break;
+      used.add(n); out.push(n);
+    }
+
+    out.sort((a,b)=>a-b);
+    return out;
+  }
+
+  function passSoftRules(arr){
+    // 너무 극단 조합을 약하게 회피(결정론이지만 반복 감소에 도움)
+    const s = sum(arr);
+    const {o,e} = oddEven(arr);
+    // 대략적인 “무난 구간”
+    if (s < 80 || s > 200) return false;
+    if (o===0 || e===0) return false;
+    return true;
+  }
+
+  function getSeen(win){
+    try{
+      const raw = getLS(LS.seen(win), "[]");
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    }catch{ return []; }
+  }
+  function pushSeen(win, key){
+    const arr = getSeen(win);
+    arr.push(key);
+    // 최근 1200개만 유지
+    const trimmed = arr.slice(-1200);
+    setLS(LS.seen(win), JSON.stringify(trimmed));
+  }
+  function seenHas(win, key){
+    const arr = getSeen(win);
+    return arr.includes(key);
+  }
+
+  function fingerprint(arr){ return arr.join("-"); }
+
+  // ---------- UI state ----------
+  let WIN = Number(getLS(LS.win, "30")) || 30;
+  WIN = [30,60,90].includes(WIN) ? WIN : 30;
+
+  function getUserSeed(){
+    return getLS(LS.userSeed, "");
+  }
+
+  function setTab(win){
+    WIN = win;
+    setLS(LS.win, String(win));
+    document.querySelectorAll(".tab").forEach(t=>{
+      t.classList.toggle("on", Number(t.dataset.win)===WIN);
+    });
+    updateHeader();
+  }
+
+  function getCycle(){
+    const v = Number(getLS(LS.cycleBase(WIN), "0"));
+    return Number.isFinite(v) ? v : 0;
+  }
+  function setCycle(v){
+    setLS(LS.cycleBase(WIN), String(Math.max(0, Math.floor(v))));
+    updateHeader();
+  }
+
+  function getRegenRot(){
+    const v = Number(getLS(LS.regenRot(WIN), "0"));
+    return Number.isFinite(v) ? v : 0;
+  }
+  function setRegenRot(v){
+    setLS(LS.regenRot(WIN), String(Math.max(0, Math.floor(v))));
+  }
+
+  function seedString(){
+    const d = getDeviceSeed();
+    const u = (document.querySelector("#seed").value || "").trim();
+    return u ? `${d}|U:${u}` : `${d}|U:(empty)`;
+  }
+
+  function updateHeader(){
+    const pLast = document.querySelector("#p-last");
+    const pUpd = document.querySelector("#p-updated");
+    const pCyc = document.querySelector("#p-cycle");
+
+    if (DATA){
+      pLast.textContent = `Last: ${DATA.lastDraw.drwNo} (${DATA.lastDraw.date})`;
+      pUpd.textContent = `Updated: ${new Date(DATA.updatedAt).toLocaleString()}`;
+    } else {
+      pLast.textContent = "Last: -";
+      pUpd.textContent = "Updated: -";
+    }
+    pCyc.textContent = `Cycle: ${getCycle()}  /  Win: ${WIN}d`;
+  }
+
+  function renderSets(sets){
+    const out = document.querySelector("#out");
+    out.innerHTML = "";
+
+    sets.forEach((arr, idx)=>{
+      const s = sum(arr);
+      const oe = oddEven(arr);
+      const hl = hiLo(arr);
+
+      const el = document.createElement("div");
+      el.className = "set";
+
+      const head = document.createElement("div");
+      head.className = "sethead";
+
+      const title = document.createElement("div");
+      title.className = "settitle";
+      title.textContent = `#${String(idx+1).padStart(2,"0")} 추천`;
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.innerHTML = `합 ${s} · 홀/짝 ${oe.o}/${oe.e} · 저/고 ${hl.lo}/${hl.hi}`;
+
+      const copyBtn = document.createElement("div");
+      copyBtn.className = "btn small";
+      copyBtn.textContent = "복사";
+      copyBtn.onclick = async () => {
+        const txt = arr.join(", ");
+        try{
+          await navigator.clipboard.writeText(txt);
+          copyBtn.textContent = "복사됨";
+          setTimeout(()=>copyBtn.textContent="복사", 900);
+        }catch{
+          alert("클립보드 복사가 막혀 있어요. 숫자를 직접 복사해주세요:\n" + txt);
+        }
+      };
+
+      head.appendChild(title);
+      head.appendChild(meta);
+      head.appendChild(copyBtn);
+
+      const balls = document.createElement("div");
+      balls.className = "balls";
+
+      arr.forEach(n=>{
+        const b = document.createElement("div");
+        b.className = "ball " + ballClass(n);
+        b.textContent = String(n);
+        balls.appendChild(b);
+      });
+
+      el.appendChild(head);
+      el.appendChild(balls);
+      out.appendChild(el);
+    });
+  }
+
+  function recommend(count){
+    if (!DATA) return;
+
+    const scored = buildScoredNumbers(WIN);
+    let cycle = getCycle();
+    const rot = getRegenRot();
+    const baseSeed = seedString();
+
+    const sets = [];
+    let guard = 0;
+
+    while (sets.length < count && guard < 5000){
+      guard++;
+
+      const setIndex = sets.length;
+      let arr = makeOneSet(scored, WIN, cycle, setIndex, baseSeed, rot);
+
+      // soft rule fail -> cycle advance
+      if (!passSoftRules(arr)){
+        cycle += 1;
+        continue;
+      }
+
+      const key = fingerprint(arr) + `|w${WIN}`;
+      // 최근 seen 중복 회피
+      if (seenHas(WIN, key)){
+        cycle += 1;
+        continue;
+      }
+
+      sets.push(arr);
+      pushSeen(WIN, key);
+    }
+
+    // 클릭할 때마다 기본적으로 1 증가 + (중복회피로 더 증가할 수 있음)
+    setCycle(cycle + 1);
+
+    renderSets(sets);
+  }
+
+  // "같은 cycle에서 재생성" = cycle은 유지하고 rot만 증가(순서 회전)
+  function regenSameCycle(){
+    setRegenRot(getRegenRot() + 1);
+    // 마지막 클릭 수를 모르니 5개 기본으로 미리 갱신
+    recommend(5);
+  }
+
+  // ---------- Events ----------
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.addEventListener("click", ()=> setTab(Number(t.dataset.win)));
+  });
+
+  document.querySelectorAll(".btn.primary").forEach(b=>{
+    b.addEventListener("click", ()=> recommend(Number(b.dataset.cnt)));
+  });
+
+  document.querySelector("#regen").addEventListener("click", regenSameCycle);
+
+  document.querySelector("#saveSeed").addEventListener("click", ()=>{
+    const v = (document.querySelector("#seed").value || "").trim();
+    setLS(LS.userSeed, v);
+    updateHeader();
+  });
+
+  document.querySelector("#jump50").addEventListener("click", ()=> setCycle(getCycle()+50));
+  document.querySelector("#jump100").addEventListener("click", ()=> setCycle(getCycle()+100));
+  document.querySelector("#jump500").addEventListener("click", ()=> setCycle(getCycle()+500));
+  document.querySelector("#resetCycle").addEventListener("click", ()=>{
+    setCycle(0);
+    setRegenRot(0);
+  });
+
+  document.querySelector("#shareLink").addEventListener("click", async ()=>{
+    const seed = (document.querySelector("#seed").value || "").trim();
+    const c = getCycle();
+    const url = new URL(location.href);
+    url.searchParams.set("win", String(WIN));
+    url.searchParams.set("cycle", String(c));
+    if (seed) url.searchParams.set("seed", seed);
+    else url.searchParams.delete("seed");
+
+    try{
+      await navigator.clipboard.writeText(url.toString());
+      alert("링크를 복사했어요:\n" + url.toString());
+    }catch{
+      prompt("복사해서 공유하세요:", url.toString());
+    }
+  });
+
+  // ---------- Init ----------
+  async function init(){
+    // Apply query params (share)
+    const q = new URLSearchParams(location.search);
+    const qWin = Number(q.get("win"));
+    const qCycle = Number(q.get("cycle"));
+    const qSeed = (q.get("seed") || "").trim();
+
+    if ([30,60,90].includes(qWin)) WIN = qWin;
+    setLS(LS.win, String(WIN));
+    if (Number.isFinite(qCycle) && qCycle>=0) setLS(LS.cycleBase(WIN), String(Math.floor(qCycle)));
+
+    // seed load order: query > saved
+    const savedSeed = getUserSeed();
+    const seedEl = document.querySelector("#seed");
+    seedEl.value = qSeed || savedSeed || "";
+
+    // Load data (fallback paths)
+    // - Pages root deploy:  /data/lotto645_freq.json
+    // - If you open /lotto645-c/ directly: ../data/lotto645_freq.json
+    DATA = await fetchFirstOk([
+      "./data/lotto645_freq.json",
+      "../data/lotto645_freq.json",
+      "../../data/lotto645_freq.json",
+    ]);
+
+    // tabs render
+    document.querySelectorAll(".tab").forEach(t=>{
+      t.classList.toggle("on", Number(t.dataset.win)===WIN);
+    });
+
+    updateHeader();
+
+    // First view: 5 sets (but doesn't auto-increment cycle until user clicks)
+    // -> show a preview based on current cycle, but do NOT consume cycle:
+    // We'll render preview by temporarily using recommend logic without persisting.
+    const scored = buildScoredNumbers(WIN);
+    const cycle = getCycle();
+    const rot = getRegenRot();
+    const baseSeed = seedString();
+
+    const preview = [];
+    let guard = 0;
+    while (preview.length < 5 && guard < 3000){
+      guard++;
+      const arr = makeOneSet(scored, WIN, cycle + preview.length, preview.length, baseSeed, rot);
+      if (!passSoftRules(arr)) continue;
+      preview.push(arr);
+    }
+    renderSets(preview);
+  }
+
+  init().catch(err=>{
+    console.error(err);
+    const out = document.querySelector("#out");
+    out.innerHTML = `<div class="hint">데이터 로딩 실패: ${String(err && err.message || err)}<br/>Actions 업데이트가 아직 안 되었을 수 있어요.</div>`;
+    updateHeader();
+  });
+})();
+</script>
+</body>
+</html>
