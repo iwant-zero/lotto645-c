@@ -7,6 +7,8 @@ on:
     paths:
       - "lotto645-c/**"
       - "data/**"
+      - "index.html"
+      - "assets/**"
       - ".github/workflows/deploy-pages.yml"
 
 permissions:
@@ -25,14 +27,68 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare dist
+      - name: Prepare dist (auto-detect paths)
+        shell: bash
         run: |
+          set -euo pipefail
+
           rm -rf dist
           mkdir -p dist/data
-          cp -f lotto645-c/index.html dist/index.html
-          cp -f data/lotto645_draws.json dist/data/lotto645_draws.json || true
-          cp -f data/lotto645_freq.json dist/data/lotto645_freq.json || true
-          cp -R lotto645-c/assets dist/assets 2>/dev/null || true
+
+          # 1) Find index.html
+          SRC_INDEX=""
+          for p in "lotto645-c/index.html" "index.html" "lotto645-c/lotto645-c/index.html"; do
+            if [ -f "$p" ]; then SRC_INDEX="$p"; break; fi
+          done
+
+          if [ -z "$SRC_INDEX" ]; then
+            echo "ERROR: index.html not found in known locations."
+            echo "Repo files (depth 4):"
+            find . -maxdepth 4 -type f | sort
+            exit 1
+          fi
+
+          echo "Using index: $SRC_INDEX"
+          cp -f "$SRC_INDEX" dist/index.html
+
+          # 2) Copy data (try common locations)
+          for f in \
+            "data/lotto645_draws.json" \
+            "data/lotto645_freq.json" \
+            "lotto645-c/data/lotto645_draws.json" \
+            "lotto645-c/data/lotto645_freq.json" \
+            "lotto645-c/lotto645-c/data/lotto645_draws.json" \
+            "lotto645-c/lotto645-c/data/lotto645_freq.json"
+          do
+            if [ -f "$f" ]; then
+              echo "Copy data: $f"
+              cp -f "$f" dist/data/$(basename "$f")
+            fi
+          done
+
+          # 3) Copy assets (for BGM / images)
+          # Prefer lotto645-c/assets, fallback to assets
+          if [ -d "lotto645-c/assets" ]; then
+            echo "Copy assets from lotto645-c/assets"
+            mkdir -p dist/assets
+            cp -R lotto645-c/assets/* dist/assets/ 2>/dev/null || true
+          elif [ -d "assets" ]; then
+            echo "Copy assets from assets"
+            mkdir -p dist/assets
+            cp -R assets/* dist/assets/ 2>/dev/null || true
+          elif [ -d "lotto645-c/lotto645-c/assets" ]; then
+            echo "Copy assets from lotto645-c/lotto645-c/assets"
+            mkdir -p dist/assets
+            cp -R lotto645-c/lotto645-c/assets/* dist/assets/ 2>/dev/null || true
+          else
+            echo "No assets directory found. (OK if you don't use BGM)"
+          fi
+
+          # GitHub Pages: avoid Jekyll filtering
+          touch dist/.nojekyll
+
+          echo "dist tree:"
+          find dist -maxdepth 4 -type f | sort
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
