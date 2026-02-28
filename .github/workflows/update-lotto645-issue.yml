@@ -28,11 +28,9 @@ jobs:
             let body = "";
             if (isIssue) body = (context.payload.issue.body || "") + "\n" + (context.payload.issue.title || "");
             if (isComment) body = (context.payload.comment.body || "");
-
             const hasCmd = body.includes("/lotto645");
             const autoOnOpen = isIssue && /lotto645/i.test(body);
             const run = hasCmd || autoOnOpen;
-
             core.setOutput("run", run ? "1" : "0");
             core.setOutput("body", body);
 
@@ -48,28 +46,58 @@ jobs:
 
           const freq = JSON.parse(fs.readFileSync("data/lotto645_freq.json","utf-8"));
           const body = process.env.BODY || "";
-
-          // parse: /lotto645 [count] [window] [seed...]
-          // count: 1|5|10 (default 5)
-          // window: 10|20|30 (default 20)
-          function pickInt(x, ok) {
-            const n = Number(x);
-            return ok.includes(n) ? n : null;
-          }
-
-          const m = body.match(/\/lotto645(?:\s+([0-9]+))?(?:\s+(10|20|30))?(?:\s+([^\n\r]+))?/i);
-          let count = 5, win = 20, seed = null;
-          if (m) {
-            const c = pickInt(m[1], [1,5,10]); if (c) count = c;
-            const w = pickInt(m[2], [10,20,30]); if (w) win = w;
-            seed = (m[3]||"").trim() || null;
-          }
-
           const ev = JSON.parse(process.env.GH_EVENT);
+
           const author = (ev?.issue?.user?.login) || (ev?.comment?.user?.login) || "user";
+
+          // --- parse command line ---
+          const line = (body.split(/\r?\n/).find(l => l.includes("/lotto645")) || body).trim();
+          const tokens = line.split(/\s+/).slice(1);
+
+          let count = 5;     // 1|5|10
+          let win = 20;      // 10|20|30
+          let disp = 50;     // 0..100
+          let preset = "auto"; // auto|bal|lowsum|highsum|odd|even|low|high
+          let cycle = 0;
+          const seedParts = [];
+
+          const presetSet = new Set(["auto","bal","lowsum","highsum","odd","even","low","high"]);
+
+          function asInt(x){ const n = Number(x); return Number.isFinite(n) ? n : null; }
+
+          for (const tok of tokens){
+            if (/^disp=\d+$/i.test(tok)){
+              disp = Math.max(0, Math.min(100, asInt(tok.split("=")[1]) ?? disp));
+              continue;
+            }
+            if (/^preset=\w+$/i.test(tok)){
+              const p = tok.split("=")[1].toLowerCase();
+              if (presetSet.has(p)) preset = p;
+              continue;
+            }
+            if (/^c=\d+$/i.test(tok)){
+              cycle = Math.max(0, asInt(tok.split("=")[1]) ?? cycle);
+              continue;
+            }
+            if (presetSet.has(tok.toLowerCase())){
+              preset = tok.toLowerCase();
+              continue;
+            }
+            if (/^\d+$/.test(tok)){
+              const n = asInt(tok);
+              if ([1,5,10].includes(n) && count === 5) { count = n; continue; }
+              if ([10,20,30].includes(n) && win === 20) { win = n; continue; }
+              if (n >= 0 && n <= 100 && disp === 50) { disp = n; continue; }
+              if (n >= 0 && cycle === 0) { cycle = n; continue; }
+              continue;
+            }
+            seedParts.push(tok);
+          }
+
+          let seed = seedParts.join(" ").trim();
           if (!seed) seed = author;
 
-          // deterministic hash + xorshift32
+          // --- deterministic ---
           function fnv1a32(str){
             let h = 0x811c9dc5;
             for (let i=0;i<str.length;i++){
@@ -103,14 +131,17 @@ jobs:
           }
 
           function getWeights(win){
-            // N회차가 짧을수록 최근 가중↑
             if (win===10) return {rw:0.60, ow:0.40};
             if (win===20) return {rw:0.45, ow:0.55};
             return {rw:0.35, ow:0.65};
           }
 
+          const recentCounts = (freq.recentWeighted && freq.recentWeighted[String(win)] && freq.recentWeighted[String(win)].main)
+            ? freq.recentWeighted[String(win)].main
+            : freq.recent[String(win)].main;
+
           const overallRank = normalizeRanks(freq.overall.main);
-          const recentRank = normalizeRanks(freq.recent[String(win)].main);
+          const recentRank = normalizeRanks(recentCounts);
           const {rw, ow} = getWeights(win);
 
           const scored = [];
@@ -120,11 +151,26 @@ jobs:
           }
           scored.sort((a,b)=> b.s - a.s || a.n - b.n);
 
-          const top = scored.slice(0,15);
-          const mid = scored.slice(15,30);
-          const low = scored.slice(30,45);
+          function topLimitFromDisp(d){
+            if (d >= 67) return 1;
+            if (d >= 34) return 2;
+            return 3;
+          }
+          function applyTopLimit(pat, topLimit){
+            let t = pat[0], m = pat[1], l = pat[2];
+            const cut = Math.max(0, t - topLimit);
+            if (!cut) return [t,m,l];
+            t -= cut;
+            m += cut;
+            if (m > 4){
+              const over = m - 4;
+              m -= over;
+              l += over;
+            }
+            return [t,m,l];
+          }
 
-          const patterns = [
+          const PATTERNS = [
             [2,2,2],
             [3,2,1],
             [2,3,1],
@@ -133,55 +179,138 @@ jobs:
             [2,1,3],
           ];
 
-          function pickWeighted(list, rng, used){
-            let sum = 0;
-            for (const o of list) if (!used.has(o.n)) sum += (o.s + 0.01);
-            if (sum <= 0) return null;
-            let t = rng.nextFloat() * sum;
+          const PRESETS = {
+            auto: { id:"auto", name:"AUTO" },
+            bal: { id:"bal", sum:[95,185], odd:[2,4], low:[2,4] },
+            lowsum: { id:"lowsum", sum:[80,150] },
+            highsum: { id:"highsum", sum:[130,205] },
+            odd: { id:"odd", odd:[4,6] },
+            even: { id:"even", odd:[0,2] },
+            low: { id:"low", low:[4,6] },
+            high: { id:"high", low:[0,2] },
+          };
+          const AUTO_ROTATE = ["bal","lowsum","highsum","odd","even","low","high"];
+          function presetForSet(presetId, baseCycle, setIndex){
+            if (presetId !== "auto") return PRESETS[presetId] || PRESETS.bal;
+            const pick = AUTO_ROTATE[(baseCycle + setIndex) % AUTO_ROTATE.length];
+            return PRESETS[pick] || PRESETS.bal;
+          }
+
+          function sum(arr){ return arr.reduce((p,c)=>p+c,0); }
+          function oddEven(arr){ let o=0,e=0; for(const n of arr){ (n%2?o++:e++); } return {o,e}; }
+          function hiLo(arr){ let lo=0,hi=0; for(const n of arr){ (n<=22?lo++:hi++); } return {lo,hi}; }
+
+          function passPreset(arr, preset){
+            const s = sum(arr);
+            const oe = oddEven(arr);
+            const hl = hiLo(arr);
+
+            if (s < 80 || s > 210) return false;
+            if (oe.o===0 || oe.e===0) return false;
+
+            if (preset.sum && (s < preset.sum[0] || s > preset.sum[1])) return false;
+            if (preset.odd && (oe.o < preset.odd[0] || oe.o > preset.odd[1])) return false;
+            if (preset.low && (hl.lo < preset.low[0] || hl.lo > preset.low[1])) return false;
+            return true;
+          }
+
+          const top = scored.slice(0,15);
+          const mid = scored.slice(15,30);
+          const low = scored.slice(30,45);
+
+          function pickWeighted(list, rng, used, weightPow){
+            let total = 0;
             for (const o of list){
               if (used.has(o.n)) continue;
-              t -= (o.s + 0.01);
+              total += Math.pow(o.s + 0.01, weightPow);
+            }
+            if (total <= 0) return null;
+            let t = rng.nextFloat() * total;
+            for (const o of list){
+              if (used.has(o.n)) continue;
+              t -= Math.pow(o.s + 0.01, weightPow);
               if (t <= 0) return o.n;
             }
             for (const o of list) if (!used.has(o.n)) return o.n;
             return null;
           }
 
-          function makeSet(idx){
-            const base = `${seed}|issue:${author}|last:${freq.lastDraw.drwNo}|win:${win}|i:${idx}`;
+          function makeSet(i){
+            const baseCycle = cycle + i;
+            const pat0 = PATTERNS[baseCycle % PATTERNS.length];
+            const topLimit = topLimitFromDisp(disp);
+            const pat = applyTopLimit(pat0, topLimit);
+
+            const weightPow = 1.00 - (disp/100) * 0.22;
+
+            const presetObj = presetForSet(preset, baseCycle, 0);
+
+            const base = `${seed}|issue:${author}|last:${freq.lastDraw.drwNo}|win:${win}|cycle:${baseCycle}|disp:${disp}|preset:${presetObj.id}|i:${i}`;
             const rng = XorShift32(fnv1a32(base));
-            const pat = patterns[idx % patterns.length];
 
             const used = new Set();
             const out = [];
 
             for (let k=0;k<pat[0];k++){
-              const n = pickWeighted(top, rng, used); if (n==null) break;
+              const n = pickWeighted(top, rng, used, weightPow); if (n==null) break;
               used.add(n); out.push(n);
             }
             for (let k=0;k<pat[1];k++){
-              const n = pickWeighted(mid, rng, used); if (n==null) break;
+              const n = pickWeighted(mid, rng, used, weightPow); if (n==null) break;
               used.add(n); out.push(n);
             }
             for (let k=0;k<pat[2];k++){
-              const n = pickWeighted(low, rng, used); if (n==null) break;
+              const n = pickWeighted(low, rng, used, weightPow); if (n==null) break;
               used.add(n); out.push(n);
             }
 
             out.sort((a,b)=>a-b);
-            return out;
+            if (!passPreset(out, presetObj)) return null;
+            return { arr: out, presetUsed: presetObj.id };
+          }
+
+          function bandCounts(arr){
+            // based on scored position
+            const pos = {};
+            scored.forEach((o, idx)=> pos[o.n] = idx+1);
+            let T=0,M=0,L=0;
+            for (const n of arr){
+              const p = pos[n] || 999;
+              if (p <= 15) T++;
+              else if (p <= 30) M++;
+              else L++;
+            }
+            return {T,M,L};
           }
 
           const sets = [];
-          for (let i=0;i<count;i++) sets.push(makeSet(i));
+          let guard = 0;
+          while (sets.length < count && guard < 8000){
+            guard++;
+            const r = makeSet(sets.length);
+            if (!r) continue;
+            sets.push(r);
+          }
 
+          const topMax = topLimitFromDisp(disp);
           const lines = [];
           lines.push(`## 🎯 Lotto645 추천 (${count}세트)`);
-          lines.push(`- 기준: 누적 빈도 + 최근 ${win}회차 빈도 가중`);
+          lines.push(`- 기준: 누적 + 최근 ${win}회차 (지수감쇠 가중 사용 가능)`);
           lines.push(`- Seed: \`${seed}\``);
+          lines.push(`- Disp: ${disp} (topMax=${topMax}) / Preset: ${preset}`);
+          lines.push(`- Cycle: ${cycle}`);
           lines.push(`- Last Draw: ${freq.lastDraw.drwNo} (${freq.lastDraw.date})`);
           lines.push("");
-          sets.forEach((s,i)=> lines.push(`**#${String(i+1).padStart(2,"0")}**  \`${s.join(", ")}\``));
+
+          sets.forEach((s, i)=>{
+            const bc = bandCounts(s.arr);
+            const ss = sum(s.arr);
+            const oe = oddEven(s.arr);
+            const hl = hiLo(s.arr);
+            lines.push(`**#${String(i+1).padStart(2,"0")}**  \`${s.arr.join(", ")}\``);
+            lines.push(`- 밴드 T/M/L ${bc.T}/${bc.M}/${bc.L} · 합 ${ss} · 홀/짝 ${oe.o}/${oe.e} · 저/고 ${hl.lo}/${hl.hi} · preset ${s.presetUsed}`);
+          });
+
           lines.push("");
           lines.push("> 참고: 빈도 기반 추천은 ‘과거 데이터 요약’이며 당첨을 보장하지 않습니다.");
 
