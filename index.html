@@ -80,11 +80,11 @@
       font-weight:900;border:1px solid rgba(255,255,255,.20);
       box-shadow: 0 8px 16px rgba(0,0,0,.22) inset, 0 10px 22px rgba(0,0,0,.20);
     }
-    .b1{background:linear-gradient(180deg,#ffd166,#f59e0b);color:#1c1400}     /* 1-10 */
-    .b2{background:linear-gradient(180deg,#8ec5ff,#3b82f6);color:#001225}     /* 11-20 */
-    .b3{background:linear-gradient(180deg,#ff8fb1,#ef4444);color:#2a0008}     /* 21-30 */
-    .b4{background:linear-gradient(180deg,#bff4c8,#22c55e);color:#052012}     /* 31-40 */
-    .b5{background:linear-gradient(180deg,#d2d2d2,#9ca3af);color:#111827}     /* 41-45 */
+    .b1{background:linear-gradient(180deg,#ffd166,#f59e0b);color:#1c1400}
+    .b2{background:linear-gradient(180deg,#8ec5ff,#3b82f6);color:#001225}
+    .b3{background:linear-gradient(180deg,#ff8fb1,#ef4444);color:#2a0008}
+    .b4{background:linear-gradient(180deg,#bff4c8,#22c55e);color:#052012}
+    .b5{background:linear-gradient(180deg,#d2d2d2,#9ca3af);color:#111827}
 
     .footer{margin:16px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
   </style>
@@ -93,10 +93,10 @@
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="title">로또645 빈도 기반 추천기 <span class="mono" style="opacity:.7">v2.2</span></div>
+      <div class="title">로또645 빈도 기반 추천기 <span class="mono" style="opacity:.7">v2.3</span></div>
       <div class="sub">
         무작위(Math.random/crypto) 없이 <b>결정론(데이터+cycle+seed+disp+preset+pool)</b>로만 추천을 순환 생성합니다.<br/>
-        “조합 풀(캐시)”에서 인덱스만 돌기 때문에, 클릭 몇 번에 다시 나오는 체감이 크게 줄어듭니다.
+        BGM은 <span class="mono">lotto645-c/assets/bgm/track1.mp3</span> 형태로 넣으면 자동 인식합니다.
       </div>
       <div class="badge">
         <span class="pill" id="p-health">Health: -</span>
@@ -118,7 +118,7 @@
       <h3>추천 설정</h3>
 
       <div class="row">
-        <div class="input" title="사람끼리 seed를 다르게 쓰면 겹침이 확 줄어듭니다.">
+        <div class="input">
           <span class="mono" style="color:var(--muted);font-weight:900">SEED</span>
           <input id="seed" placeholder="예: TEAM-A / 닉네임 / 2026-02-28-1" />
         </div>
@@ -170,16 +170,23 @@
         </div>
       </div>
 
-      <!-- ✅ BGM 섹션 -->
+      <!-- ✅ BGM 섹션(레포 assets/bgm) -->
       <div class="hr"></div>
       <h3 style="margin:0 0 10px 0">배경음악(BGM)</h3>
+
       <div class="row">
         <div class="input" style="flex:1 1 320px">
-          <span class="mono" style="color:var(--muted);font-weight:900">FILE</span>
-          <input id="bgmFile" type="file" accept="audio/*,video/mp4,audio/mp4" />
+          <span class="mono" style="color:var(--muted);font-weight:900">TRACK</span>
+          <select id="bgmSelect"></select>
         </div>
+        <div class="btn small" id="bgmRefresh">리스트 새로고침</div>
+      </div>
+
+      <div class="row" style="margin-top:8px">
         <div class="btn small" id="bgmToggle">음악: OFF</div>
         <div class="btn small" id="bgmPlay">재생</div>
+        <div class="btn small" id="bgmStop">정지</div>
+        <div class="btn small" id="bgmClear">해제</div>
       </div>
 
       <div class="row" style="margin-top:8px">
@@ -187,12 +194,10 @@
           <span class="mono" style="color:var(--muted);font-weight:900">VOL</span>
           <input id="bgmVol" type="range" min="0" max="100" step="1" />
         </div>
-        <div class="btn small" id="bgmStop">정지</div>
-        <div class="btn small" id="bgmClear">파일해제</div>
       </div>
 
       <div class="hint" id="bgmStatus" style="margin-top:8px">
-        음악 파일을 선택하면(로컬) 재생 준비가 됩니다. 자동재생은 브라우저 정책상 막힐 수 있어요.
+        assets/bgm 폴더에 track1.mp3 같은 파일을 넣고 커밋/배포하면 목록에 나타납니다.
       </div>
 
       <div class="hr"></div>
@@ -220,8 +225,8 @@
       </div>
 
       <div class="footer">
-        ※ 빈도 기반 추천은 “과거 데이터 요약”이며 당첨을 보장하지 않습니다.<br/>
-        ※ 업데이트 상태가 DEGRADED면(소스 지연/불일치 등) 최신 반영이 지연될 수 있습니다.
+        ※ BGM 자동재생은 브라우저 정책상 막힐 수 있어요(그때는 ‘재생’ 버튼 한 번).<br/>
+        ※ 업데이트 상태가 DEGRADED면 최신 반영이 지연될 수 있습니다.
       </div>
     </div>
 
@@ -294,9 +299,9 @@
     seen: (key) => `lotto645_seen_${key}`,
     lastCnt: "lotto645_last_cnt_v1",
 
-    // ✅ BGM 저장
-    bgmEnabled: "lotto645_bgm_enabled_v1",
-    bgmVol: "lotto645_bgm_vol_v1",
+    bgmEnabled: "lotto645_bgm_enabled_v2",
+    bgmVol: "lotto645_bgm_vol_v2",
+    bgmTrack: "lotto645_bgm_track_v1",
   };
 
   function getLS(k, d=null){
@@ -665,80 +670,6 @@
     return buildPoolNow();
   }
 
-  function oneLineSummary(arr, bc, s, oe, hl, presetUsed){
-    return `${arr.join(", ")} | T/M/L ${bc.T}/${bc.M}/${bc.L} | 합 ${s} | 홀/짝 ${oe.o}/${oe.e} | 저/고 ${hl.lo}/${hl.hi} | preset ${presetUsed}`;
-  }
-
-  function drawCardPng(arr, metaLine){
-    const W = 820, H = 240;
-    const c = document.createElement("canvas");
-    c.width = W; c.height = H;
-    const g = c.getContext("2d");
-
-    g.fillStyle = "#0b1220";
-    g.fillRect(0,0,W,H);
-    g.fillStyle = "rgba(255,255,255,0.06)";
-    g.fillRect(16,16,W-32,H-32);
-
-    g.fillStyle = "#e8eefc";
-    g.font = "700 20px system-ui, -apple-system, Segoe UI, Roboto";
-    g.fillText("Lotto645 추천", 28, 48);
-
-    g.fillStyle = "#9db0d3";
-    g.font = "500 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas";
-    g.fillText(metaLine.slice(0, 120), 28, 72);
-
-    const colors = (n)=>{
-      if (n<=10) return ["#ffd166","#f59e0b","#1c1400"];
-      if (n<=20) return ["#8ec5ff","#3b82f6","#001225"];
-      if (n<=30) return ["#ff8fb1","#ef4444","#2a0008"];
-      if (n<=40) return ["#bff4c8","#22c55e","#052012"];
-      return ["#d2d2d2","#9ca3af","#111827"];
-    };
-
-    const r = 26;
-    const startX = 60;
-    const y = 140;
-    const gap = 70;
-
-    arr.forEach((n,i)=>{
-      const x = startX + i*gap;
-      const [c1,c2,tc] = colors(n);
-
-      const grad = g.createLinearGradient(x, y-r, x, y+r);
-      grad.addColorStop(0, c1);
-      grad.addColorStop(1, c2);
-
-      g.beginPath();
-      g.arc(x, y, r, 0, Math.PI*2);
-      g.fillStyle = grad;
-      g.fill();
-      g.strokeStyle = "rgba(255,255,255,0.20)";
-      g.lineWidth = 2;
-      g.stroke();
-
-      g.fillStyle = tc;
-      g.font = "900 18px system-ui, -apple-system, Segoe UI, Roboto";
-      g.textAlign = "center";
-      g.textBaseline = "middle";
-      g.fillText(String(n), x, y);
-    });
-
-    g.textAlign = "left";
-    g.textBaseline = "alphabetic";
-    g.fillStyle = "#9db0d3";
-    g.font = "500 12px system-ui, -apple-system, Segoe UI, Roboto";
-    g.fillText("결정론 추천(무작위 아님) · 빈도 기반", 28, 214);
-
-    const url = c.toDataURL("image/png");
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `lotto645_${arr.join("-")}.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-
   function renderSets(items, scorePos){
     const out = document.querySelector("#out");
     out.innerHTML = "";
@@ -787,7 +718,7 @@
       copyOne.className = "btn small";
       copyOne.textContent = "한줄복사";
       copyOne.onclick = async () => {
-        const txt = oneLineSummary(arr, bc, s, oe, hl, presetUsed);
+        const txt = `${arr.join(", ")} | T/M/L ${bc.T}/${bc.M}/${bc.L} | 합 ${s} | 홀/짝 ${oe.o}/${oe.e} | 저/고 ${hl.lo}/${hl.hi} | preset ${presetUsed}`;
         try{
           await navigator.clipboard.writeText(txt);
           copyOne.textContent = "복사됨";
@@ -797,17 +728,8 @@
         }
       };
 
-      const savePng = document.createElement("div");
-      savePng.className = "btn small";
-      savePng.textContent = "PNG저장";
-      savePng.onclick = () => {
-        const metaLine = `Last ${DATA.lastDraw.drwNo} · Win ${WIN} · Disp ${getDisp()} · Preset ${presetUsed}`;
-        drawCardPng(arr, metaLine);
-      };
-
       btnRow.appendChild(copyNums);
       btnRow.appendChild(copyOne);
-      btnRow.appendChild(savePng);
 
       head.appendChild(title);
       head.appendChild(meta);
@@ -983,10 +905,7 @@
     url.searchParams.set("disp", String(getDisp()));
     url.searchParams.set("preset", String(getPreset()));
     url.searchParams.set("pool", String(getPoolSize()));
-
-    const c = cnt || getLastCnt();
-    url.searchParams.set("cnt", String(c));
-
+    url.searchParams.set("cnt", String(cnt || getLastCnt()));
     if (seed) url.searchParams.set("seed", seed);
     else url.searchParams.delete("seed");
 
@@ -999,9 +918,13 @@
   }
 
   // =====================
-  // BGM (Local file player)
+  // BGM: repo assets/bgm autodiscovery
   // =====================
-  const bgmFile = document.querySelector("#bgmFile");
+  const BGM_DIR = "./assets/bgm/";
+  const BGM_EXTS = ["mp3","mp4","m4a","ogg","wav"];
+  const BGM_MAX = 50; // track1..track50
+  const bgmSelect = document.querySelector("#bgmSelect");
+  const bgmRefresh = document.querySelector("#bgmRefresh");
   const bgmToggle = document.querySelector("#bgmToggle");
   const bgmPlay = document.querySelector("#bgmPlay");
   const bgmStop = document.querySelector("#bgmStop");
@@ -1021,199 +944,243 @@
   document.body.appendChild(bgmVideo);
 
   let bgmEnabled = (getLS(LS.bgmEnabled, "0") === "1");
-  let currentObjectUrl = null;
-  let using = "audio"; // "audio" | "video"
+  let using = "audio"; // audio|video
+  let currentUrl = ""; // selected track url
 
-  function setBgmStatus(msg) {
-    if (bgmStatus) bgmStatus.textContent = msg;
-  }
-
-  function isBgmPlaying() {
+  function setBgmStatus(msg){ if (bgmStatus) bgmStatus.textContent = msg; }
+  function isBgmPlaying(){
     const el = (using === "video") ? bgmVideo : bgmAudio;
     return !el.paused && !el.ended;
   }
-
-  function setBgmUi() {
-    if (!bgmToggle || !bgmPlay) return;
-    bgmToggle.textContent = `음악: ${bgmEnabled ? "ON" : "OFF"}`;
-    bgmPlay.textContent = isBgmPlaying() ? "일시정지" : "재생";
+  function setBgmUi(){
+    if (bgmToggle) bgmToggle.textContent = `음악: ${bgmEnabled ? "ON" : "OFF"}`;
+    if (bgmPlay) bgmPlay.textContent = isBgmPlaying() ? "일시정지" : "재생";
   }
 
-  function applyVolumeFromLS() {
+  function stopBgm(){
+    bgmAudio.pause(); bgmVideo.pause();
+    try{ bgmAudio.currentTime = 0; }catch{}
+    try{ bgmVideo.currentTime = 0; }catch{}
+    setBgmUi();
+  }
+  function clearBgm(){
+    stopBgm();
+    bgmAudio.removeAttribute("src");
+    bgmVideo.removeAttribute("src");
+    bgmAudio.load(); bgmVideo.load();
+    currentUrl = "";
+    setLS(LS.bgmTrack, "");
+    setBgmStatus("BGM 해제됨");
+    setBgmUi();
+  }
+
+  function guessMimeByExt(ext){
+    const e = (ext||"").toLowerCase();
+    if (e === "mp3") return "audio/mpeg";
+    if (e === "m4a") return "audio/mp4";
+    if (e === "ogg") return "audio/ogg";
+    if (e === "wav") return "audio/wav";
+    if (e === "mp4") return "video/mp4";
+    return "";
+  }
+
+  function pickPlayerForMime(mime){
+    const a = bgmAudio.canPlayType(mime || "");
+    if (a) return "audio";
+    const v = bgmVideo.canPlayType(mime || "");
+    if (v) return "video";
+    // mp4는 보통 video가 더 안정적
+    if ((mime||"").includes("video/mp4")) return "video";
+    return "audio";
+  }
+
+  function applyVolumeFromLS(){
     const v = Number(getLS(LS.bgmVol, "60"));
-    const vv = Number.isFinite(v) ? clamp(v, 0, 100) : 60;
+    const vv = Number.isFinite(v) ? clamp(v,0,100) : 60;
     if (bgmVol) bgmVol.value = String(vv);
     const vol01 = vv / 100;
     bgmAudio.volume = vol01;
     bgmVideo.volume = vol01;
   }
 
-  function stopBgm() {
-    bgmAudio.pause();
-    bgmVideo.pause();
-    try { bgmAudio.currentTime = 0; } catch {}
-    try { bgmVideo.currentTime = 0; } catch {}
-    setBgmUi();
+  async function tryPlayBgm(){
+    if (!bgmEnabled){
+      setBgmStatus("음악 OFF");
+      setBgmUi();
+      return;
+    }
+    const el = (using === "video") ? bgmVideo : bgmAudio;
+    if (!el.src){
+      setBgmStatus("트랙을 선택하세요.");
+      setBgmUi();
+      return;
+    }
+    try{
+      const p = el.play();
+      if (p && typeof p.then === "function") await p;
+      setBgmStatus("재생 중");
+    }catch{
+      setBgmStatus("자동재생이 차단됐어요. '재생' 버튼을 한 번 더 눌러주세요.");
+    }finally{
+      setBgmUi();
+    }
   }
 
-  function clearBgmSource() {
+  function setTrackUrl(url){
+    currentUrl = url || "";
+    setLS(LS.bgmTrack, currentUrl);
+
     stopBgm();
     bgmAudio.removeAttribute("src");
     bgmVideo.removeAttribute("src");
     bgmAudio.load();
     bgmVideo.load();
-    if (currentObjectUrl) {
-      URL.revokeObjectURL(currentObjectUrl);
-      currentObjectUrl = null;
+
+    if (!currentUrl){
+      setBgmStatus("트랙 해제됨");
+      setBgmUi();
+      return;
     }
-    if (bgmFile) bgmFile.value = "";
-    setBgmStatus("파일이 해제되었습니다.");
+
+    const ext = (currentUrl.split(".").pop() || "").toLowerCase();
+    const mime = guessMimeByExt(ext);
+    using = pickPlayerForMime(mime);
+
+    if (using === "video"){
+      bgmVideo.src = currentUrl;
+      bgmVideo.load();
+    } else {
+      bgmAudio.src = currentUrl;
+      bgmAudio.load();
+    }
+
+    setBgmStatus(`선택됨: ${currentUrl.replace(BGM_DIR,"")}`);
+    setBgmUi();
+
+    // ON이면 재생 시도(막히면 안내)
+    if (bgmEnabled) tryPlayBgm();
+  }
+
+  // 파일 존재 확인: HEAD가 안 되면 GET 후 body cancel
+  async function urlExists(url){
+    try{
+      const res = await fetch(url, { method: "HEAD", cache: "no-store" });
+      if (res.ok) return true;
+    }catch{}
+    try{
+      const res = await fetch(url, { method: "GET", cache: "no-store" });
+      if (!res.ok) return false;
+      try{ res.body && res.body.cancel && res.body.cancel(); }catch{}
+      return true;
+    }catch{
+      return false;
+    }
+  }
+
+  async function scanTracks(){
+    setBgmStatus("트랙 검색 중… (track1~track50)");
+    const found = [];
+    for (let i=1;i<=BGM_MAX;i++){
+      for (const ext of BGM_EXTS){
+        const name = `track${i}.${ext}`;
+        const url = `${BGM_DIR}${name}`;
+        // 존재하면 추가
+        // eslint-disable-next-line no-await-in-loop
+        const ok = await urlExists(url);
+        if (ok) found.push({ name, url });
+      }
+    }
+    return found;
+  }
+
+  function fillSelect(list){
+    bgmSelect.innerHTML = "";
+    const opt0 = document.createElement("option");
+    opt0.value = "";
+    opt0.textContent = list.length ? "트랙 선택…" : "트랙 없음 (assets/bgm에 파일 넣기)";
+    bgmSelect.appendChild(opt0);
+
+    for (const t of list){
+      const o = document.createElement("option");
+      o.value = t.url;
+      o.textContent = t.name;
+      bgmSelect.appendChild(o);
+    }
+
+    // restore selection
+    const saved = getLS(LS.bgmTrack, "");
+    if (saved){
+      const has = list.some(x => x.url === saved);
+      bgmSelect.value = has ? saved : "";
+      if (has) setTrackUrl(saved);
+      else setBgmStatus("저장된 트랙이 없어졌어요. 다시 선택하세요.");
+    } else {
+      setBgmStatus(list.length ? "트랙을 선택하세요." : "assets/bgm에 track1.mp3 같은 파일을 넣고 배포하세요.");
+    }
     setBgmUi();
   }
 
-  function pickPlayerForMime(mime) {
-    const a = bgmAudio.canPlayType(mime || "");
-    if (a) return "audio";
-    const v = bgmVideo.canPlayType(mime || "");
-    if (v) return "video";
-    return "audio";
+  async function refreshTracks(){
+    try{
+      const list = await scanTracks();
+      fillSelect(list);
+      if (!list.length) setBgmStatus("트랙이 없습니다. assets/bgm에 track1.mp3 넣고 커밋/배포하세요.");
+      else setBgmStatus(`트랙 ${list.length}개 발견`);
+    }catch(e){
+      setBgmStatus("트랙 검색 실패(배포/경로 확인 필요)");
+      console.error(e);
+    }
   }
 
-  async function tryPlayBgm() {
-    if (!bgmEnabled) {
-      setBgmStatus("음악이 OFF 상태입니다.");
-      setBgmUi();
+  // BGM 이벤트
+  bgmSelect.addEventListener("change", () => setTrackUrl(bgmSelect.value));
+  bgmRefresh.addEventListener("click", refreshTracks);
+
+  bgmToggle.addEventListener("click", () => {
+    bgmEnabled = !bgmEnabled;
+    setLS(LS.bgmEnabled, bgmEnabled ? "1" : "0");
+    if (!bgmEnabled) stopBgm();
+    setBgmUi();
+    setBgmStatus(bgmEnabled ? "음악 ON" : "음악 OFF");
+    if (bgmEnabled) tryPlayBgm();
+  });
+
+  bgmPlay.addEventListener("click", async () => {
+    if (!bgmEnabled){
+      setBgmStatus("먼저 음악 ON으로 켜세요.");
       return;
     }
     const el = (using === "video") ? bgmVideo : bgmAudio;
-    if (!el.src) {
-      setBgmStatus("먼저 음악 파일을 선택하세요.");
-      setBgmUi();
+    if (!el.src){
+      setBgmStatus("트랙을 선택하세요.");
       return;
     }
-
-    try {
-      const p = el.play();
-      if (p && typeof p.then === "function") await p;
-      setBgmStatus("재생 중");
-    } catch (e) {
-      setBgmStatus("자동재생이 차단됐어요. '재생' 버튼을 한 번 더 눌러주세요.");
-    } finally {
+    if (isBgmPlaying()){
+      el.pause();
+      setBgmStatus("일시정지");
       setBgmUi();
-    }
-  }
-
-  function ensureMutedState() {
-    if (!bgmEnabled) stopBgm();
-  }
-
-  if (bgmToggle) {
-    bgmToggle.addEventListener("click", async () => {
-      bgmEnabled = !bgmEnabled;
-      setLS(LS.bgmEnabled, bgmEnabled ? "1" : "0");
-      ensureMutedState();
-      setBgmUi();
-      if (bgmEnabled) {
-        await tryPlayBgm();
-      } else {
-        setBgmStatus("음악 OFF");
-      }
-    });
-  }
-
-  if (bgmPlay) {
-    bgmPlay.addEventListener("click", async () => {
-      if (!bgmEnabled) {
-        setBgmStatus("먼저 '음악 ON'으로 켜주세요.");
-        return;
-      }
-      const el = (using === "video") ? bgmVideo : bgmAudio;
-      if (!el.src) {
-        setBgmStatus("먼저 음악 파일을 선택하세요.");
-        setBgmUi();
-        return;
-      }
-      if (isBgmPlaying()) {
-        el.pause();
-        setBgmStatus("일시정지");
-        setBgmUi();
-      } else {
-        await tryPlayBgm();
-      }
-    });
-  }
-
-  if (bgmStop) {
-    bgmStop.addEventListener("click", () => {
-      stopBgm();
-      setBgmStatus("정지");
-    });
-  }
-
-  if (bgmClear) {
-    bgmClear.addEventListener("click", () => {
-      clearBgmSource();
-    });
-  }
-
-  if (bgmVol) {
-    bgmVol.addEventListener("input", () => {
-      const vv = Number(bgmVol.value);
-      setLS(LS.bgmVol, String(vv));
-      const vol01 = clamp(vv, 0, 100) / 100;
-      bgmAudio.volume = vol01;
-      bgmVideo.volume = vol01;
-      setBgmUi();
-    });
-  }
-
-  if (bgmFile) {
-    bgmFile.addEventListener("change", async () => {
-      const f = bgmFile.files && bgmFile.files[0];
-      if (!f) return;
-
-      if (currentObjectUrl) {
-        URL.revokeObjectURL(currentObjectUrl);
-        currentObjectUrl = null;
-      }
-
-      currentObjectUrl = URL.createObjectURL(f);
-      const mime = f.type || "";
-      using = pickPlayerForMime(mime);
-
-      if (using === "video") {
-        bgmAudio.pause();
-        bgmAudio.removeAttribute("src");
-        bgmAudio.load();
-        bgmVideo.src = currentObjectUrl;
-        bgmVideo.load();
-      } else {
-        bgmVideo.pause();
-        bgmVideo.removeAttribute("src");
-        bgmVideo.load();
-        bgmAudio.src = currentObjectUrl;
-        bgmAudio.load();
-      }
-
-      setBgmStatus(`파일 선택됨: ${f.name} (${mime || "unknown"})`);
-
-      if (!bgmEnabled) {
-        bgmEnabled = true;
-        setLS(LS.bgmEnabled, "1");
-      }
-      setBgmUi();
+    } else {
       await tryPlayBgm();
-    });
-  }
-
-  window.addEventListener("beforeunload", () => {
-    if (currentObjectUrl) {
-      URL.revokeObjectURL(currentObjectUrl);
-      currentObjectUrl = null;
     }
   });
 
-  // ---------- Events ----------
+  bgmStop.addEventListener("click", () => {
+    stopBgm();
+    setBgmStatus("정지");
+  });
+
+  bgmClear.addEventListener("click", clearBgm);
+
+  bgmVol.addEventListener("input", () => {
+    const vv = Number(bgmVol.value);
+    setLS(LS.bgmVol, String(vv));
+    const vol01 = clamp(vv,0,100)/100;
+    bgmAudio.volume = vol01;
+    bgmVideo.volume = vol01;
+    setBgmUi();
+  });
+
+  // ---------- UI events ----------
   document.querySelectorAll(".tab").forEach(t=>{
     t.addEventListener("click", ()=> setTab(Number(t.dataset.win)));
   });
@@ -1222,7 +1189,7 @@
     b.addEventListener("click", ()=> recommend(Number(b.dataset.cnt)));
   });
 
-  // A 방식: 뷰 오프셋 버튼은 마지막 추천 개수로 recommend 재실행
+  // A 방식: 뷰 오프셋 버튼은 마지막 추천 개수로 재생성
   document.querySelector("#regen").addEventListener("click", ()=>{
     setViewOffset(getViewOffset() + 1);
     recommend(getLastCnt());
@@ -1273,14 +1240,10 @@
     document.querySelector("#preset").value = getPreset();
     document.querySelector("#poolSize").value = String(getPoolSize());
 
-    // BGM init
     applyVolumeFromLS();
     setBgmUi();
-    if (bgmEnabled) {
-      setBgmStatus("음악 ON (파일 선택 후 재생 가능)");
-    } else {
-      setBgmStatus("음악 OFF (원하면 ON으로 켜세요)");
-    }
+    setBgmStatus("트랙 목록 준비 중…");
+    refreshTracks();
 
     preview();
 
