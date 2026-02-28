@@ -3,69 +3,69 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>로또645 빈도 기반 추천기 (결정론 순환)</title>
+  <title>로또645 빈도 기반 추천기 (결정론 + 풀 캐시)</title>
   <meta name="theme-color" content="#0b1220" />
   <style>
     :root{
       --bg:#0b1220; --card:#121b2e; --card2:#0f1730; --txt:#e8eefc; --muted:#9db0d3;
-      --line:rgba(255,255,255,.10); --accent:#64d2ff; --accent2:#a7f3d0;
+      --line:rgba(255,255,255,.10);
     }
     *{box-sizing:border-box}
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif;background:var(--bg);color:var(--txt)}
-    a{color:inherit}
-    .wrap{max-width:980px;margin:0 auto;padding:18px}
+    .wrap{max-width:1040px;margin:0 auto;padding:18px}
     .top{
       display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;
-      padding:14px 14px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));
+      padding:14px;border:1px solid var(--line);
+      background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));
       border-radius:16px;
     }
-    .title{font-size:18px;font-weight:800;letter-spacing:-.2px}
+    .title{font-size:18px;font-weight:900;letter-spacing:-.2px}
     .sub{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.35}
-    .badge{display:inline-flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .badge{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
     .pill{
       padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);
       font-size:12px;color:var(--muted)
     }
-    .grid{
-      margin-top:14px;
-      display:grid;grid-template-columns:1fr;gap:12px;
-    }
-    @media(min-width:860px){
-      .grid{grid-template-columns: 1.1fr .9fr;}
-    }
-    .card{
-      padding:14px;border:1px solid var(--line);background:var(--card);border-radius:16px;
-    }
+    .pill.ok{border-color:rgba(167,243,208,.35);background:rgba(167,243,208,.10);color:#c9ffe8}
+    .pill.bad{border-color:rgba(255,120,120,.35);background:rgba(255,120,120,.10);color:#ffd0d0}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap}
+    .tab{padding:8px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);cursor:pointer;font-weight:900;font-size:12px;color:var(--muted)}
+    .tab.on{color:var(--txt);border-color:rgba(100,210,255,.35);background:rgba(100,210,255,.10)}
+
+    .grid{margin-top:14px;display:grid;grid-template-columns:1fr;gap:12px}
+    @media(min-width:900px){ .grid{grid-template-columns: 1.15fr .85fr;} }
+
+    .card{padding:14px;border:1px solid var(--line);background:var(--card);border-radius:16px}
     .card h3{margin:0 0 10px 0;font-size:14px;color:#d6e3ff}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .row > *{flex:0 0 auto}
     .input{
-      flex:1 1 240px;
-      display:flex;gap:8px;align-items:center;
+      flex:1 1 260px;display:flex;gap:8px;align-items:center;
       border:1px solid var(--line);background:rgba(0,0,0,.18);
       border-radius:12px;padding:10px 10px;
     }
-    .input input{
-      width:100%;border:0;outline:0;background:transparent;color:var(--txt);
-      font-size:14px;
+    .input input,.input select{
+      width:100%;border:0;outline:0;background:transparent;color:var(--txt);font-size:14px;
     }
     .btn{
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.04);
-      color:var(--txt);
-      padding:10px 12px;border-radius:12px;
-      font-weight:700;font-size:13px;
-      cursor:pointer;
-      user-select:none;
+      border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--txt);
+      padding:10px 12px;border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;user-select:none;
     }
     .btn:active{transform:translateY(1px)}
     .btn.primary{border-color:rgba(100,210,255,.35);background:rgba(100,210,255,.12)}
     .btn.good{border-color:rgba(167,243,208,.35);background:rgba(167,243,208,.10)}
     .btn.small{padding:8px 10px;border-radius:10px;font-size:12px}
-    .tabs{display:flex;gap:8px;flex-wrap:wrap}
-    .tab{padding:8px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);cursor:pointer;font-weight:800;font-size:12px;color:var(--muted)}
-    .tab.on{color:var(--txt);border-color:rgba(100,210,255,.35);background:rgba(100,210,255,.10)}
     .hr{height:1px;background:var(--line);margin:12px 0}
+    .hint{font-size:12px;color:var(--muted);line-height:1.45}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+
+    .sliderWrap{
+      width:100%;border:1px solid var(--line);background:rgba(0,0,0,.16);
+      border-radius:14px;padding:10px;
+    }
+    .sliderTop{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+    input[type="range"]{width:100%}
+    .mini{font-size:12px;color:var(--muted)}
+
     .out{display:flex;flex-direction:column;gap:10px}
     .set{
       border:1px solid var(--line);background:var(--card2);border-radius:14px;padding:12px;
@@ -77,8 +77,7 @@
     .balls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .ball{
       width:38px;height:38px;border-radius:999px;display:flex;align-items:center;justify-content:center;
-      font-weight:900;
-      border:1px solid rgba(255,255,255,.20);
+      font-weight:900;border:1px solid rgba(255,255,255,.20);
       box-shadow: 0 8px 16px rgba(0,0,0,.22) inset, 0 10px 22px rgba(0,0,0,.20);
     }
     .b1{background:linear-gradient(180deg,#ffd166,#f59e0b);color:#1c1400}     /* 1-10 */
@@ -86,120 +85,133 @@
     .b3{background:linear-gradient(180deg,#ff8fb1,#ef4444);color:#2a0008}     /* 21-30 */
     .b4{background:linear-gradient(180deg,#bff4c8,#22c55e);color:#052012}     /* 31-40 */
     .b5{background:linear-gradient(180deg,#d2d2d2,#9ca3af);color:#111827}     /* 41-45 */
-    .hint{font-size:12px;color:var(--muted);line-height:1.45}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
-    .footer{margin:18px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
-    .sliderWrap{
-      width:100%;
-      border:1px solid var(--line);
-      background:rgba(0,0,0,.16);
-      border-radius:14px;
-      padding:10px 10px;
-    }
-    .sliderTop{
-      display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;
-      margin-bottom:8px;
-    }
-    .sliderTop b{color:#d6e3ff}
-    input[type="range"]{width:100%;}
-    .mini{font-size:12px;color:var(--muted)}
+
+    .footer{margin:16px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="top">
-      <div>
-        <div class="title">로또645 빈도 기반 추천기 <span class="mono" style="opacity:.7">v1.2</span></div>
-        <div class="sub">
-          무작위(Math.random/crypto) 없이 <b>결정론(데이터+cycle+seed+분산)</b>로만 추천을 순환 생성합니다.<br/>
-          여러 사람이 눌러도 <b>기기 seed</b>가 달라 기본적으로 겹침이 줄어듭니다.
-        </div>
-        <div class="badge">
-          <span class="pill" id="p-last">Last: -</span>
-          <span class="pill" id="p-updated">Updated: -</span>
-          <span class="pill" id="p-cycle">Cycle: -</span>
-        </div>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <div class="title">로또645 빈도 기반 추천기 <span class="mono" style="opacity:.7">v2.0</span></div>
+      <div class="sub">
+        무작위(Math.random/crypto) 없이 <b>결정론(데이터+cycle+seed+disp+preset+pool)</b>로만 추천을 순환 생성합니다.<br/>
+        “조합 풀(캐시)”에서 인덱스만 돌기 때문에, 클릭 몇 번에 다시 나오는 체감이 크게 줄어듭니다.
       </div>
-      <div class="tabs" id="tabs">
-        <div class="tab on" data-win="10">최근 10회</div>
-        <div class="tab" data-win="20">최근 20회</div>
-        <div class="tab" data-win="30">최근 30회</div>
+      <div class="badge">
+        <span class="pill" id="p-health">Health: -</span>
+        <span class="pill" id="p-last">Last: -</span>
+        <span class="pill" id="p-updated">Updated: -</span>
+        <span class="pill" id="p-cycle">Cycle: -</span>
+        <span class="pill" id="p-pool">Pool: -</span>
       </div>
     </div>
-
-    <div class="grid">
-      <div class="card">
-        <h3>추천 설정</h3>
-
-        <div class="row">
-          <div class="input" title="사람끼리 seed를 다르게 쓰면 겹침이 확 줄어듭니다.">
-            <span class="mono" style="color:var(--muted);font-weight:800">SEED</span>
-            <input id="seed" placeholder="예: TEAM-A / 닉네임 / 2026-02-28-1" />
-          </div>
-          <div class="row">
-            <div class="btn small" id="saveSeed">저장</div>
-            <div class="btn small" id="shareLink">링크복사</div>
-          </div>
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="sliderWrap">
-          <div class="sliderTop">
-            <div class="mini">
-              <b>밴드 분산 강도(Top 제한)</b>
-              <span id="dispText" class="mono" style="margin-left:8px;opacity:.9">-</span>
-            </div>
-            <div class="mini" id="dispHint">-</div>
-          </div>
-          <input id="disp" type="range" min="0" max="100" step="1" />
-          <div class="mini" style="margin-top:6px">
-            낮음(0)=Top 최대 3개 · 중간(50)=Top 최대 2개 · 높음(100)=Top 최대 1개
-          </div>
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="row" style="justify-content:space-between">
-          <div class="hint">
-            <b>cycle</b>이 1 증가할 때마다 다른 조합으로 순환합니다.<br/>
-            점프 후 추천을 누르면 “큰 폭”으로 순환이 이동합니다.
-          </div>
-          <div class="row">
-            <div class="btn small" id="jump50">+50</div>
-            <div class="btn small" id="jump100">+100</div>
-            <div class="btn small" id="jump500">+500</div>
-            <div class="btn small" id="resetCycle">reset</div>
-          </div>
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="row">
-          <div class="btn primary" data-cnt="1">1개 추천</div>
-          <div class="btn primary" data-cnt="5">5개 추천</div>
-          <div class="btn primary" data-cnt="10">10개 추천</div>
-          <div class="btn good" id="regen">같은 cycle에서 재생성(순서 회전)</div>
-        </div>
-
-        <div class="footer">
-          ※ 로또 6/45의 1~3등은 “같은 6개 당첨번호(보너스 포함 여부만 다름)” 구조라,
-          본 추천은 각 회차의 <b>당첨 6개 번호</b>의 빈도를 중심으로 계산합니다.
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>추천 결과</h3>
-        <div class="out" id="out">
-          <div class="hint">데이터 로딩 중…</div>
-        </div>
-      </div>
+    <div class="tabs" id="tabs">
+      <div class="tab on" data-win="10">최근 10회</div>
+      <div class="tab" data-win="20">최근 20회</div>
+      <div class="tab" data-win="30">최근 30회</div>
     </div>
   </div>
 
+  <div class="grid">
+    <div class="card">
+      <h3>추천 설정</h3>
+
+      <div class="row">
+        <div class="input" title="사람끼리 seed를 다르게 쓰면 겹침이 확 줄어듭니다.">
+          <span class="mono" style="color:var(--muted);font-weight:900">SEED</span>
+          <input id="seed" placeholder="예: TEAM-A / 닉네임 / 2026-02-28-1" />
+        </div>
+        <div class="row">
+          <div class="btn small" id="saveSeed">저장</div>
+          <div class="btn small" id="shareLink">링크복사</div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="row">
+        <div class="input" style="flex:1 1 260px">
+          <span class="mono" style="color:var(--muted);font-weight:900">PRESET</span>
+          <select id="preset">
+            <option value="auto">AUTO(순환)</option>
+            <option value="bal">BAL(균형)</option>
+            <option value="lowsum">LOW SUM</option>
+            <option value="highsum">HIGH SUM</option>
+            <option value="odd">ODD HEAVY</option>
+            <option value="even">EVEN HEAVY</option>
+            <option value="low">LOW(1~22)</option>
+            <option value="high">HIGH(23~45)</option>
+          </select>
+        </div>
+        <div class="input" style="flex:1 1 220px">
+          <span class="mono" style="color:var(--muted);font-weight:900">POOL</span>
+          <select id="poolSize">
+            <option value="3000">3,000</option>
+            <option value="5000">5,000</option>
+            <option value="10000" selected>10,000</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="sliderWrap">
+        <div class="sliderTop">
+          <div class="mini">
+            <b style="color:#d6e3ff">밴드 분산 강도(Top 제한)</b>
+            <span id="dispText" class="mono" style="margin-left:8px;opacity:.9">-</span>
+          </div>
+          <div class="mini" id="dispHint">-</div>
+        </div>
+        <input id="disp" type="range" min="0" max="100" step="1" />
+        <div class="mini" style="margin-top:6px">
+          낮음(0)=Top 최대 3개 · 중간(50)=Top 최대 2개 · 높음(100)=Top 최대 1개
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="row" style="justify-content:space-between">
+        <div class="hint">
+          <b>cycle</b>은 풀 인덱스입니다. 클릭 시 <b>count만큼</b> 증가합니다(무한 순환).<br/>
+          점프 후 추천을 누르면 큰 폭으로 이동합니다.
+        </div>
+        <div class="row">
+          <div class="btn small" id="jump50">+50</div>
+          <div class="btn small" id="jump100">+100</div>
+          <div class="btn small" id="jump500">+500</div>
+          <div class="btn small" id="resetCycle">reset</div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="row">
+        <div class="btn primary" data-cnt="1">1개 추천</div>
+        <div class="btn primary" data-cnt="5">5개 추천</div>
+        <div class="btn primary" data-cnt="10">10개 추천</div>
+        <div class="btn good" id="regen">같은 cycle 재생성(뷰 오프셋)</div>
+      </div>
+
+      <div class="footer">
+        ※ 빈도 기반 추천은 “과거 데이터 요약”이며 당첨을 보장하지 않습니다.<br/>
+        ※ 업데이트 상태가 DEGRADED면(소스 지연/불일치 등) 최신 반영이 지연될 수 있습니다.
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>추천 결과</h3>
+      <div class="out" id="out">
+        <div class="hint">데이터 로딩 중…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (() => {
-  // ---------- Deterministic utils (NO Math.random / NO crypto random) ----------
+  // ---------- Deterministic (NO Math.random / NO crypto random) ----------
   function fnv1a32(str){
     let h = 0x811c9dc5;
     for (let i=0;i<str.length;i++){
@@ -208,7 +220,6 @@
     }
     return h >>> 0;
   }
-
   function XorShift32(seed){
     let x = (seed >>> 0) || 0x12345678;
     return {
@@ -223,9 +234,9 @@
       }
     };
   }
-
   function clamp(n,a,b){ return Math.max(a, Math.min(b,n)); }
 
+  // ---------- UI helpers ----------
   function ballClass(n){
     if (n<=10) return "b1";
     if (n<=20) return "b2";
@@ -233,7 +244,6 @@
     if (n<=40) return "b4";
     return "b5";
   }
-
   function sum(arr){ return arr.reduce((p,c)=>p+c,0); }
   function oddEven(arr){
     let o=0,e=0;
@@ -246,24 +256,25 @@
     return {lo,hi};
   }
 
-  // ---------- Storage ----------
+  // ---------- Storage keys ----------
   const LS = {
-    deviceSeed: "lotto645_device_seed_v1",
-    userSeed: "lotto645_user_seed_v1",
-    win: "lotto645_win_v2",                 // v2: 10/20/30 draws
-    cycleBase: (win) => `lotto645_cycle_${win}_v2`,
-    regenRot: (win) => `lotto645_regenrot_${win}_v2`,
-    seen: (win) => `lotto645_seen_${win}_v2`,
-    dispersion: "lotto645_dispersion_v1",   // 0..100
+    deviceSeed: "lotto645_device_seed_v2",
+    userSeed: "lotto645_user_seed_v2",
+    win: "lotto645_win_v3",                     // 10/20/30
+    cycle: (win) => `lotto645_cycle_${win}_v3`, // pool index
+    viewOffset: (win) => `lotto645_viewoff_${win}_v3`,
+    dispersion: "lotto645_disp_v2",
+    preset: "lotto645_preset_v1",
+    poolSize: "lotto645_poolsize_v1",
+    pool: (key) => `lotto645_pool_${key}`,      // stored as compact string
+    poolMeta: (key) => `lotto645_poolmeta_${key}`,
+    seen: (key) => `lotto645_seen_${key}`,      // recent blacklist per pool key
   };
 
   function getLS(k, d=null){
-    try{
-      const v = localStorage.getItem(k);
-      return v==null ? d : v;
-    }catch{ return d; }
+    try{ const v = localStorage.getItem(k); return v==null ? d : v; }catch{ return d; }
   }
-  function setLS(k,v){
+  function setLS(k, v){
     try{ localStorage.setItem(k, String(v)); }catch{}
   }
 
@@ -283,7 +294,7 @@
     return s;
   }
 
-  // ---------- Data loading (with path fallback) ----------
+  // ---------- Data loading ----------
   async function fetchFirstOk(urls){
     let lastErr = null;
     for (const u of urls){
@@ -297,9 +308,34 @@
   }
 
   let DATA = null;
+  let WIN = Number(getLS(LS.win, "10")) || 10;
+  WIN = [10,20,30].includes(WIN) ? WIN : 10;
 
-  // ---------- Scoring ----------
-  function normalizeRanks(counts){
+  function getCycle(){ return Number(getLS(LS.cycle(WIN), "0")) || 0; }
+  function setCycle(v){ setLS(LS.cycle(WIN), String(Math.max(0, Math.floor(v)))); updateHeader(); }
+  function getViewOffset(){ return Number(getLS(LS.viewOffset(WIN), "0")) || 0; }
+  function setViewOffset(v){ setLS(LS.viewOffset(WIN), String(Math.max(0, Math.floor(v)))); }
+
+  function getDisp(){ return clamp(Number(getLS(LS.dispersion, "50")) || 50, 0, 100); }
+  function setDisp(v){ setLS(LS.dispersion, String(clamp(Math.floor(v),0,100))); updateHeader(); }
+
+  function getPreset(){ return getLS(LS.preset, "auto") || "auto"; }
+  function setPreset(v){ setLS(LS.preset, v); updateHeader(); }
+
+  function getPoolSize(){ return Number(getLS(LS.poolSize, "10000")) || 10000; }
+  function setPoolSize(v){ setLS(LS.poolSize, String(v)); updateHeader(); }
+
+  function setTab(win){
+    WIN = win;
+    setLS(LS.win, String(win));
+    document.querySelectorAll(".tab").forEach(t=> t.classList.toggle("on", Number(t.dataset.win)===WIN));
+    updateHeader();
+    // 탭 전환 시 결과는 “현재 인덱스 기준”으로 다시 표시(풀도 별도)
+    preview();
+  }
+
+  // ---------- ranking/scoring ----------
+  function normalizeRanksFromCounts(counts){
     const arr = [];
     for (let i=1;i<=45;i++){
       arr.push({n:i, c:Number(counts[i]||0)});
@@ -307,19 +343,26 @@
     arr.sort((a,b)=> b.c - a.c || a.n - b.n);
     const rank = {};
     arr.forEach((o, idx)=> rank[o.n] = idx+1);
-    return rank; // 1..45 (1=top)
+    return rank;
   }
 
   function getWeights(win){
-    // win이 짧을수록 "최근" 가중↑
+    // win이 짧을수록 최근 가중↑
     if (win===10) return {rw:0.60, ow:0.40};
     if (win===20) return {rw:0.45, ow:0.55};
-    return {rw:0.35, ow:0.65}; // 30
+    return {rw:0.35, ow:0.65};
   }
 
   function buildScoredNumbers(win){
-    const overallRank = normalizeRanks(DATA.overall.main);
-    const recentRank = normalizeRanks(DATA.recent[String(win)].main);
+    const overallRank = normalizeRanksFromCounts(DATA.overall.main);
+
+    // recentWeighted가 있으면 그걸 우선 사용 (지수감쇠)
+    const recentCounts = (DATA.recentWeighted && DATA.recentWeighted[String(win)] && DATA.recentWeighted[String(win)].main)
+      ? DATA.recentWeighted[String(win)].main
+      : DATA.recent[String(win)].main;
+
+    const recentRank = normalizeRanksFromCounts(recentCounts);
+
     const {rw, ow} = getWeights(win);
 
     const scored = [];
@@ -337,30 +380,19 @@
     return pos;
   }
 
-  // ---------- Dispersion / Top limit ----------
-  function getDispersion(){
-    const v = Number(getLS(LS.dispersion, "50"));
-    return Number.isFinite(v) ? clamp(v,0,100) : 50;
-  }
-  function setDispersion(v){
-    setLS(LS.dispersion, String(clamp(Math.floor(v),0,100)));
-  }
+  // ---------- band / dispersion ----------
   function topLimitFromDisp(d){
-    // 0..100 -> 3/2/1
     if (d >= 67) return 1;
     if (d >= 34) return 2;
     return 3;
   }
+
   function applyTopLimit(pat, topLimit){
-    // pat: [top, mid, low] sums to 6
     let t = pat[0], m = pat[1], l = pat[2];
     const cut = Math.max(0, t - topLimit);
     if (cut === 0) return [t,m,l];
     t -= cut;
-
-    // redistribute cut -> mid first, then low (keep total=6)
     m += cut;
-    // keep mid not too huge: if mid > 4, push overflow to low
     if (m > 4){
       const over = m - 4;
       m -= over;
@@ -369,7 +401,6 @@
     return [t,m,l];
   }
 
-  // ---------- Deterministic pick w/ band dispersion ----------
   const PATTERNS = [
     [2,2,2],
     [3,2,1],
@@ -379,9 +410,49 @@
     [2,1,3],
   ];
 
+  // ---------- presets (soft constraints) ----------
+  const PRESETS = {
+    auto: { id:"auto", name:"AUTO" },
+    bal: { id:"bal", name:"BAL", sum:[95,185], odd:[2,4], low:[2,4] },
+    lowsum: { id:"lowsum", name:"LOW SUM", sum:[80,150] },
+    highsum: { id:"highsum", name:"HIGH SUM", sum:[130,205] },
+    odd: { id:"odd", name:"ODD", odd:[4,6] },
+    even: { id:"even", name:"EVEN", odd:[0,2] }, // odd <=2 => even heavy
+    low: { id:"low", name:"LOW", low:[4,6] },
+    high: { id:"high", name:"HIGH", low:[0,2] }, // low<=2 => high heavy
+  };
+
+  const AUTO_ROTATE = ["bal","lowsum","highsum","odd","even","low","high"];
+
+  function presetForSet(presetId, cycle, setIndex){
+    if (presetId !== "auto") return PRESETS[presetId] || PRESETS.bal;
+    const pick = AUTO_ROTATE[(cycle + setIndex) % AUTO_ROTATE.length];
+    return PRESETS[pick] || PRESETS.bal;
+  }
+
+  function passPreset(arr, preset){
+    const s = sum(arr);
+    const oe = oddEven(arr);
+    const hl = hiLo(arr);
+
+    // baseline sanity
+    if (s < 80 || s > 210) return false;
+    if (oe.o === 0 || oe.e === 0) return false;
+
+    if (preset.sum){
+      if (s < preset.sum[0] || s > preset.sum[1]) return false;
+    }
+    if (preset.odd){
+      if (oe.o < preset.odd[0] || oe.o > preset.odd[1]) return false;
+    }
+    if (preset.low){
+      if (hl.lo < preset.low[0] || hl.lo > preset.low[1]) return false;
+    }
+    return true;
+  }
+
+  // ---------- weighted pick (deterministic) ----------
   function pickWeighted(list, rng, used, weightPow=1.0){
-    // weightPow >1 makes scores more "peaky" (more top heavy),
-    // weightPow <1 flattens selection (more dispersed).
     let total = 0;
     for (const o of list){
       if (used.has(o.n)) continue;
@@ -389,7 +460,6 @@
       total += w;
     }
     if (total <= 0) return null;
-
     let t = rng.nextFloat() * total;
     for (const o of list){
       if (used.has(o.n)) continue;
@@ -397,27 +467,25 @@
       t -= w;
       if (t <= 0) return o.n;
     }
-    for (const o of list){
-      if (!used.has(o.n)) return o.n;
-    }
+    for (const o of list) if (!used.has(o.n)) return o.n;
     return null;
   }
 
-  function makeOneSet(scored, win, cycle, setIndex, seedString, regenRotate, dispersion){
+  function makeOneSet(scored, win, baseCycle, setIndex, seedStr, dispersion, presetId){
     const top = scored.slice(0,15);
     const mid = scored.slice(15,30);
     const low = scored.slice(30,45);
 
-    const pat0 = PATTERNS[(cycle + setIndex + regenRotate) % PATTERNS.length];
-
+    const pat0 = PATTERNS[(baseCycle + setIndex) % PATTERNS.length];
     const topLimit = topLimitFromDisp(dispersion);
     const pat = applyTopLimit(pat0, topLimit);
 
-    // dispersion also flattens weights slightly when high
-    // 0 -> 1.00 (normal), 100 -> 0.78 (flatter)
+    // dispersion -> flatten weights
     const weightPow = 1.00 - (dispersion/100) * 0.22;
 
-    const base = `${seedString}|last:${DATA.lastDraw.drwNo}|win:${win}|cycle:${cycle}|set:${setIndex}|rot:${regenRotate}|disp:${dispersion}`;
+    const preset = presetForSet(presetId, baseCycle, setIndex);
+
+    const base = `${seedStr}|last:${DATA.lastDraw.drwNo}|win:${win}|cycle:${baseCycle}|i:${setIndex}|disp:${dispersion}|preset:${preset.id}`;
     const rng = XorShift32(fnv1a32(base));
 
     const used = new Set();
@@ -437,110 +505,11 @@
     }
 
     out.sort((a,b)=>a-b);
-    return out;
-  }
-
-  function passSoftRules(arr){
-    const s = sum(arr);
-    const {o,e} = oddEven(arr);
-    if (s < 80 || s > 200) return false;
-    if (o===0 || e===0) return false;
-    return true;
-  }
-
-  function getSeen(win){
-    try{
-      const raw = getLS(LS.seen(win), "[]");
-      const arr = JSON.parse(raw);
-      return Array.isArray(arr) ? arr : [];
-    }catch{ return []; }
-  }
-  function pushSeen(win, key){
-    const arr = getSeen(win);
-    arr.push(key);
-    const trimmed = arr.slice(-1200);
-    setLS(LS.seen(win), JSON.stringify(trimmed));
-  }
-  function seenHas(win, key){
-    const arr = getSeen(win);
-    return arr.includes(key);
-  }
-
-  function fingerprint(arr){ return arr.join("-"); }
-
-  // ---------- UI state ----------
-  let WIN = Number(getLS(LS.win, "10")) || 10;
-  WIN = [10,20,30].includes(WIN) ? WIN : 10;
-
-  function getUserSeed(){
-    return getLS(LS.userSeed, "");
-  }
-
-  function setTab(win){
-    WIN = win;
-    setLS(LS.win, String(win));
-    document.querySelectorAll(".tab").forEach(t=>{
-      t.classList.toggle("on", Number(t.dataset.win)===WIN);
-    });
-    updateHeader();
-  }
-
-  function getCycle(){
-    const v = Number(getLS(LS.cycleBase(WIN), "0"));
-    return Number.isFinite(v) ? v : 0;
-  }
-  function setCycle(v){
-    setLS(LS.cycleBase(WIN), String(Math.max(0, Math.floor(v))));
-    updateHeader();
-  }
-
-  function getRegenRot(){
-    const v = Number(getLS(LS.regenRot(WIN), "0"));
-    return Number.isFinite(v) ? v : 0;
-  }
-  function setRegenRot(v){
-    setLS(LS.regenRot(WIN), String(Math.max(0, Math.floor(v))));
-  }
-
-  function seedString(){
-    const d = getDeviceSeed();
-    const u = (document.querySelector("#seed").value || "").trim();
-    const disp = getDispersion();
-    // disp도 seed에 포함되어 "설정 공유" 시 조합이 안정적으로 재현됨
-    return u ? `${d}|U:${u}|DISP:${disp}` : `${d}|U:(empty)|DISP:${disp}`;
-  }
-
-  function updateDispUI(){
-    const disp = getDispersion();
-    const topLim = topLimitFromDisp(disp);
-
-    const el = document.querySelector("#dispText");
-    const hint = document.querySelector("#dispHint");
-    el.textContent = `disp=${disp} / topMax=${topLim}`;
-    hint.textContent = `패턴 top을 ${topLim}개 이하로 제한 + 상위 쏠림 완화`;
-
-    const slider = document.querySelector("#disp");
-    if (Number(slider.value) !== disp) slider.value = String(disp);
-  }
-
-  function updateHeader(){
-    const pLast = document.querySelector("#p-last");
-    const pUpd = document.querySelector("#p-updated");
-    const pCyc = document.querySelector("#p-cycle");
-
-    if (DATA){
-      pLast.textContent = `Last: ${DATA.lastDraw.drwNo} (${DATA.lastDraw.date})`;
-      pUpd.textContent = `Updated: ${new Date(DATA.updatedAt).toLocaleString()}`;
-    } else {
-      pLast.textContent = "Last: -";
-      pUpd.textContent = "Updated: -";
-    }
-    pCyc.textContent = `Cycle: ${getCycle()}  /  Win: ${WIN}회`;
-    updateDispUI();
+    if (!passPreset(out, preset)) return null;
+    return { arr: out, presetUsed: preset.id };
   }
 
   function bandCounts(arr, scorePos){
-    // scorePos: 1..45 (1=top)
     let T=0,M=0,L=0;
     for (const n of arr){
       const p = scorePos[n] || 999;
@@ -551,11 +520,223 @@
     return {T,M,L};
   }
 
-  function renderSets(sets, scorePos){
+  // ---------- pool caching ----------
+  function poolKey(){
+    const seed = (document.querySelector("#seed").value || "").trim();
+    const disp = getDisp();
+    const preset = getPreset();
+    const ps = getPoolSize();
+    const dev = getDeviceSeed();
+    // key는 로컬 저장소 키이므로 너무 길지 않게 해시
+    const raw = `v:${DATA.schemaVersion||0}|last:${DATA.lastDraw.drwNo}|win:${WIN}|disp:${disp}|preset:${preset}|pool:${ps}|seed:${seed}|dev:${dev}`;
+    return fnv1a32(raw).toString(16);
+  }
+
+  function getSeedString(){
+    const d = getDeviceSeed();
+    const u = (document.querySelector("#seed").value || "").trim();
+    return u ? `${d}|U:${u}` : `${d}|U:(empty)`;
+  }
+
+  function loadPool(key){
+    try{
+      const metaRaw = getLS(LS.poolMeta(key), null);
+      const dataRaw = getLS(LS.pool(key), null);
+      if (!metaRaw || !dataRaw) return null;
+      const meta = JSON.parse(metaRaw);
+      if (!meta || meta.key !== key) return null;
+      return { meta, dataRaw };
+    }catch{ return null; }
+  }
+
+  function savePool(key, meta, lines){
+    // lines: array of "a,b,c,d,e,f|preset"
+    setLS(LS.poolMeta(key), JSON.stringify(meta));
+    setLS(LS.pool(key), lines.join("\n"));
+  }
+
+  function getSeen(key){
+    try{
+      const raw = getLS(LS.seen(key), "[]");
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    }catch{ return []; }
+  }
+  function seenHas(key, fp){
+    const arr = getSeen(key);
+    return arr.includes(fp);
+  }
+  function pushSeen(key, fp){
+    const arr = getSeen(key);
+    arr.push(fp);
+    const trimmed = arr.slice(-5000);
+    setLS(LS.seen(key), JSON.stringify(trimmed));
+  }
+
+  function parsePoolLines(dataRaw){
+    const lines = dataRaw.split("\n").filter(Boolean);
+    const sets = [];
+    for (const ln of lines){
+      // "1,2,3,4,5,6|preset"
+      const parts = ln.split("|");
+      const nums = parts[0].split(",").map(x=>Number(x.trim())).filter(n=>Number.isFinite(n));
+      const presetUsed = parts[1] || "bal";
+      if (nums.length === 6) sets.push({arr: nums, presetUsed});
+    }
+    return sets;
+  }
+
+  function buildPoolNow(){
+    const outEl = document.querySelector("#out");
+    outEl.innerHTML = `<div class="hint">조합 풀 생성 중… (처음 1회만) </div>`;
+
+    const key = poolKey();
+    const scored = buildScoredNumbers(WIN);
+    const ps = getPoolSize();
+    const disp = getDisp();
+    const presetId = getPreset();
+    const seedStr = getSeedString();
+    const startCycle = 0;
+
+    const lines = [];
+    const seenLocal = new Set();
+
+    // 최대 시도 제한 (너무 빡빡한 프리셋이어도 멈추게)
+    const maxTry = ps * 25;
+
+    let tries = 0;
+    let idx = 0;
+
+    while (lines.length < ps && tries < maxTry){
+      tries++;
+      const r = makeOneSet(scored, WIN, startCycle + idx, 0, seedStr, disp, presetId);
+      idx++;
+
+      if (!r) continue;
+
+      const fp = r.arr.join("-");
+      if (seenLocal.has(fp)) continue;
+
+      // 내부 중복 방지
+      seenLocal.add(fp);
+      lines.push(`${r.arr.join(",")}|${r.presetUsed}`);
+    }
+
+    const meta = {
+      key,
+      createdAt: new Date().toISOString(),
+      schemaVersion: DATA.schemaVersion || 0,
+      lastDraw: DATA.lastDraw.drwNo,
+      win: WIN,
+      dispersion: disp,
+      preset: presetId,
+      poolSize: ps,
+      generated: lines.length,
+      tries,
+      note: lines.length < ps ? "pool_partial_generated" : "pool_full_generated",
+    };
+
+    savePool(key, meta, lines);
+    return { key, meta, sets: parsePoolLines(lines.join("\n")) };
+  }
+
+  function ensurePool(){
+    const key = poolKey();
+    const loaded = loadPool(key);
+    if (loaded){
+      const sets = parsePoolLines(loaded.dataRaw);
+      return { key, meta: loaded.meta, sets };
+    }
+    return buildPoolNow();
+  }
+
+  // ---------- rendering ----------
+  function oneLineSummary(arr, bc, s, oe, hl, presetUsed){
+    return `${arr.join(", ")} | T/M/L ${bc.T}/${bc.M}/${bc.L} | 합 ${s} | 홀/짝 ${oe.o}/${oe.e} | 저/고 ${hl.lo}/${hl.hi} | preset ${presetUsed}`;
+  }
+
+  function drawCardPng(arr, metaLine){
+    const W = 820, H = 240;
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const g = c.getContext("2d");
+
+    // background
+    g.fillStyle = "#0b1220";
+    g.fillRect(0,0,W,H);
+    g.fillStyle = "rgba(255,255,255,0.06)";
+    g.fillRect(16,16,W-32,H-32);
+
+    // title
+    g.fillStyle = "#e8eefc";
+    g.font = "700 20px system-ui, -apple-system, Segoe UI, Roboto";
+    g.fillText("Lotto645 추천", 28, 48);
+
+    // meta
+    g.fillStyle = "#9db0d3";
+    g.font = "500 14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas";
+    g.fillText(metaLine.slice(0, 120), 28, 72);
+
+    // balls
+    const colors = (n)=>{
+      if (n<=10) return ["#ffd166","#f59e0b","#1c1400"];
+      if (n<=20) return ["#8ec5ff","#3b82f6","#001225"];
+      if (n<=30) return ["#ff8fb1","#ef4444","#2a0008"];
+      if (n<=40) return ["#bff4c8","#22c55e","#052012"];
+      return ["#d2d2d2","#9ca3af","#111827"];
+    };
+
+    const r = 26;
+    const startX = 60;
+    const y = 140;
+    const gap = 70;
+
+    arr.forEach((n,i)=>{
+      const x = startX + i*gap;
+      const [c1,c2,tc] = colors(n);
+
+      const grad = g.createLinearGradient(x, y-r, x, y+r);
+      grad.addColorStop(0, c1);
+      grad.addColorStop(1, c2);
+
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI*2);
+      g.fillStyle = grad;
+      g.fill();
+      g.strokeStyle = "rgba(255,255,255,0.20)";
+      g.lineWidth = 2;
+      g.stroke();
+
+      g.fillStyle = tc;
+      g.font = "900 18px system-ui, -apple-system, Segoe UI, Roboto";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillText(String(n), x, y);
+    });
+
+    // foot
+    g.textAlign = "left";
+    g.textBaseline = "alphabetic";
+    g.fillStyle = "#9db0d3";
+    g.font = "500 12px system-ui, -apple-system, Segoe UI, Roboto";
+    g.fillText("결정론 추천(무작위 아님) · 빈도 기반", 28, 214);
+
+    const url = c.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `lotto645_${arr.join("-")}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  function renderSets(items, scorePos){
     const out = document.querySelector("#out");
     out.innerHTML = "";
 
-    sets.forEach((arr, idx)=>{
+    items.forEach((it, idx)=>{
+      const arr = it.arr;
+      const presetUsed = it.presetUsed || "bal";
       const s = sum(arr);
       const oe = oddEven(arr);
       const hl = hiLo(arr);
@@ -573,29 +754,58 @@
 
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.innerHTML = `합 ${s} · 홀/짝 ${oe.o}/${oe.e} · 저/고 ${hl.lo}/${hl.hi} · 밴드 T/M/L ${bc.T}/${bc.M}/${bc.L}`;
+      meta.textContent =
+        `합 ${s} · 홀/짝 ${oe.o}/${oe.e} · 저/고 ${hl.lo}/${hl.hi} · 밴드 T/M/L ${bc.T}/${bc.M}/${bc.L} · preset ${presetUsed}`;
 
-      const copyBtn = document.createElement("div");
-      copyBtn.className = "btn small";
-      copyBtn.textContent = "복사";
-      copyBtn.onclick = async () => {
+      const btnRow = document.createElement("div");
+      btnRow.className = "row";
+
+      const copyNums = document.createElement("div");
+      copyNums.className = "btn small";
+      copyNums.textContent = "숫자복사";
+      copyNums.onclick = async () => {
         const txt = arr.join(", ");
         try{
           await navigator.clipboard.writeText(txt);
-          copyBtn.textContent = "복사됨";
-          setTimeout(()=>copyBtn.textContent="복사", 900);
+          copyNums.textContent = "복사됨";
+          setTimeout(()=>copyNums.textContent="숫자복사", 900);
         }catch{
-          alert("클립보드 복사가 막혀 있어요. 숫자를 직접 복사해주세요:\n" + txt);
+          alert("복사 실패:\n" + txt);
         }
       };
 
+      const copyOne = document.createElement("div");
+      copyOne.className = "btn small";
+      copyOne.textContent = "한줄복사";
+      copyOne.onclick = async () => {
+        const txt = oneLineSummary(arr, bc, s, oe, hl, presetUsed);
+        try{
+          await navigator.clipboard.writeText(txt);
+          copyOne.textContent = "복사됨";
+          setTimeout(()=>copyOne.textContent="한줄복사", 900);
+        }catch{
+          alert("복사 실패:\n" + txt);
+        }
+      };
+
+      const savePng = document.createElement("div");
+      savePng.className = "btn small";
+      savePng.textContent = "PNG저장";
+      savePng.onclick = () => {
+        const metaLine = `Last ${DATA.lastDraw.drwNo} · Win ${WIN} · Disp ${getDisp()} · Preset ${presetUsed}`;
+        drawCardPng(arr, metaLine);
+      };
+
+      btnRow.appendChild(copyNums);
+      btnRow.appendChild(copyOne);
+      btnRow.appendChild(savePng);
+
       head.appendChild(title);
       head.appendChild(meta);
-      head.appendChild(copyBtn);
+      head.appendChild(btnRow);
 
       const balls = document.createElement("div");
       balls.className = "balls";
-
       arr.forEach(n=>{
         const b = document.createElement("div");
         b.className = "ball " + ballClass(n);
@@ -609,89 +819,169 @@
     });
   }
 
+  // ---------- header/status ----------
+  function updateDispUI(){
+    const disp = getDisp();
+    const topMax = topLimitFromDisp(disp);
+    document.querySelector("#dispText").textContent = `disp=${disp} / topMax=${topMax}`;
+    document.querySelector("#dispHint").textContent = `상위 쏠림 완화 + top 최대 ${topMax}개`;
+    const slider = document.querySelector("#disp");
+    if (Number(slider.value) !== disp) slider.value = String(disp);
+  }
+
+  function updateHeader(poolMeta=null){
+    const h = document.querySelector("#p-health");
+    const pLast = document.querySelector("#p-last");
+    const pUpd = document.querySelector("#p-updated");
+    const pCyc = document.querySelector("#p-cycle");
+    const pPool = document.querySelector("#p-pool");
+
+    if (DATA){
+      const ok = (DATA.health && DATA.health.status === "ok");
+      h.textContent = `Health: ${ok ? "OK" : "DEGRADED"}`;
+      h.classList.toggle("ok", !!ok);
+      h.classList.toggle("bad", !ok);
+
+      pLast.textContent = `Last: ${DATA.lastDraw.drwNo} (${DATA.lastDraw.date})`;
+      pUpd.textContent = `Updated: ${new Date(DATA.updatedAt).toLocaleString()}`;
+    } else {
+      h.textContent = "Health: -";
+      pLast.textContent = "Last: -";
+      pUpd.textContent = "Updated: -";
+    }
+
+    pCyc.textContent = `Cycle: ${getCycle()} / Win: ${WIN}회`;
+
+    if (poolMeta){
+      pPool.textContent = `Pool: ${poolMeta.generated || 0}/${poolMeta.poolSize || 0}`;
+    } else {
+      pPool.textContent = `Pool: -`;
+    }
+
+    updateDispUI();
+  }
+
+  // ---------- recommend using pool ----------
   function recommend(count){
     if (!DATA) return;
 
     const scored = buildScoredNumbers(WIN);
     const scorePos = buildScorePos(scored);
 
-    let cycle = getCycle();
-    const rot = getRegenRot();
-    const baseSeed = seedString();
-    const disp = getDispersion();
+    const key = poolKey();
+    const pool = ensurePool();
 
-    const sets = [];
-    let guard = 0;
+    // poolKey()는 현재 설정 기반이라 ensurePool.key와 일치해야 함
+    const sets = pool.sets;
+    const size = sets.length;
 
-    while (sets.length < count && guard < 5000){
-      guard++;
-
-      const setIndex = sets.length;
-      let arr = makeOneSet(scored, WIN, cycle, setIndex, baseSeed, rot, disp);
-
-      if (!passSoftRules(arr)){
-        cycle += 1;
-        continue;
-      }
-
-      const key = fingerprint(arr) + `|w${WIN}|d${disp}`;
-      if (seenHas(WIN, key)){
-        cycle += 1;
-        continue;
-      }
-
-      sets.push(arr);
-      pushSeen(WIN, key);
+    if (!size){
+      document.querySelector("#out").innerHTML = `<div class="hint">풀 생성 실패(조건이 너무 빡빡할 수 있음). preset/disp를 조정하세요.</div>`;
+      return;
     }
 
-    setCycle(cycle + 1);
-    renderSets(sets, scorePos);
+    const baseIndex = getCycle();
+    const viewOff = getViewOffset();
+
+    const picked = [];
+    let idx = (baseIndex + viewOff * count) % size;
+
+    // 최근 중복 블랙리스트(체감 중복 감소)
+    for (let i=0; i<count; i++){
+      let guard = 0;
+      while (guard < size){
+        const item = sets[idx];
+        const fp = `${item.arr.join("-")}|w${WIN}|d${getDisp()}|p${getPreset()}|ps${getPoolSize()}`;
+        idx = (idx + 1) % size;
+        guard++;
+
+        if (seenHas(key, fp)) continue;
+        pushSeen(key, fp);
+        picked.push(item);
+        break;
+      }
+    }
+
+    // cycle advance by count (infinite)
+    setCycle(baseIndex + count);
+
+    renderSets(picked, scorePos);
+    updateHeader(pool.meta);
   }
 
-  // same cycle, rotate pattern/seed state only
-  function regenSameCycle(){
-    setRegenRot(getRegenRot() + 1);
-    recommend(5);
+  function preview(){
+    if (!DATA) return;
+    const scored = buildScoredNumbers(WIN);
+    const scorePos = buildScorePos(scored);
+    const pool = ensurePool();
+    const sets = pool.sets;
+    const size = sets.length;
+
+    if (!size){
+      document.querySelector("#out").innerHTML = `<div class="hint">풀 생성 실패. preset/disp/poolSize를 조정해 보세요.</div>`;
+      updateHeader(pool.meta);
+      return;
+    }
+
+    const baseIndex = getCycle();
+    const viewOff = getViewOffset();
+    let idx = (baseIndex + viewOff * 5) % size;
+
+    const picked = [];
+    for (let i=0;i<5;i++){
+      picked.push(sets[idx]);
+      idx = (idx+1) % size;
+    }
+
+    renderSets(picked, scorePos);
+    updateHeader(pool.meta);
   }
 
-  // ---------- Events ----------
-  document.querySelectorAll(".tab").forEach(t=>{
-    t.addEventListener("click", ()=> setTab(Number(t.dataset.win)));
-  });
+  // ---------- share link ----------
+  function applyQueryParams(){
+    const q = new URLSearchParams(location.search);
+    const qWin = Number(q.get("win"));
+    const qCycle = Number(q.get("cycle"));
+    const qSeed = (q.get("seed") || "").trim();
+    const qDisp = Number(q.get("disp"));
+    const qPreset = (q.get("preset") || "").trim();
+    const qPool = Number(q.get("pool"));
+    const qCnt = Number(q.get("cnt"));
 
-  document.querySelectorAll(".btn.primary").forEach(b=>{
-    b.addEventListener("click", ()=> recommend(Number(b.dataset.cnt)));
-  });
+    if ([10,20,30].includes(qWin)) WIN = qWin;
+    setLS(LS.win, String(WIN));
 
-  document.querySelector("#regen").addEventListener("click", regenSameCycle);
+    if (Number.isFinite(qCycle) && qCycle >= 0) setLS(LS.cycle(WIN), String(Math.floor(qCycle)));
+    if (Number.isFinite(qDisp)) setDisp(qDisp);
+    if (Number.isFinite(qPool) && [3000,5000,10000].includes(qPool)) setPoolSize(qPool);
 
-  document.querySelector("#saveSeed").addEventListener("click", ()=>{
-    const v = (document.querySelector("#seed").value || "").trim();
-    setLS(LS.userSeed, v);
-    updateHeader();
-  });
+    const seedEl = document.querySelector("#seed");
+    const savedSeed = getLS(LS.userSeed, "");
+    seedEl.value = qSeed || savedSeed || "";
 
-  document.querySelector("#jump50").addEventListener("click", ()=> setCycle(getCycle()+50));
-  document.querySelector("#jump100").addEventListener("click", ()=> setCycle(getCycle()+100));
-  document.querySelector("#jump500").addEventListener("click", ()=> setCycle(getCycle()+500));
-  document.querySelector("#resetCycle").addEventListener("click", ()=>{
-    setCycle(0);
-    setRegenRot(0);
-  });
+    if (qPreset && PRESETS[qPreset]) setPreset(qPreset);
 
-  document.querySelector("#disp").addEventListener("input", (e)=>{
-    setDispersion(Number(e.target.value));
-    updateHeader();
-  });
+    // UI reflect
+    document.querySelectorAll(".tab").forEach(t=> t.classList.toggle("on", Number(t.dataset.win)===WIN));
+    document.querySelector("#disp").value = String(getDisp());
+    document.querySelector("#preset").value = getPreset();
+    document.querySelector("#poolSize").value = String(getPoolSize());
 
-  document.querySelector("#shareLink").addEventListener("click", async ()=>{
+    // if cnt provided, do immediate recommend after data loaded
+    return { cnt: ([1,5,10].includes(qCnt) ? qCnt : null) };
+  }
+
+  async function copyShareLink(cnt=null){
     const seed = (document.querySelector("#seed").value || "").trim();
-    const c = getCycle();
-    const disp = getDispersion();
     const url = new URL(location.href);
     url.searchParams.set("win", String(WIN));
-    url.searchParams.set("cycle", String(c));
-    url.searchParams.set("disp", String(disp));
+    url.searchParams.set("cycle", String(getCycle()));
+    url.searchParams.set("disp", String(getDisp()));
+    url.searchParams.set("preset", String(getPreset()));
+    url.searchParams.set("pool", String(getPoolSize()));
+    if (cnt) url.searchParams.set("cnt", String(cnt));
+    else url.searchParams.delete("cnt");
+
     if (seed) url.searchParams.set("seed", seed);
     else url.searchParams.delete("seed");
 
@@ -701,27 +991,57 @@
     }catch{
       prompt("복사해서 공유하세요:", url.toString());
     }
+  }
+
+  // ---------- events ----------
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.addEventListener("click", ()=> setTab(Number(t.dataset.win)));
   });
 
-  // ---------- Init ----------
+  document.querySelectorAll(".btn.primary").forEach(b=>{
+    b.addEventListener("click", ()=> recommend(Number(b.dataset.cnt)));
+  });
+
+  document.querySelector("#regen").addEventListener("click", ()=>{
+    setViewOffset(getViewOffset() + 1);
+    preview();
+  });
+
+  document.querySelector("#saveSeed").addEventListener("click", ()=>{
+    const v = (document.querySelector("#seed").value || "").trim();
+    setLS(LS.userSeed, v);
+    preview();
+  });
+
+  document.querySelector("#shareLink").addEventListener("click", ()=> copyShareLink(null));
+
+  document.querySelector("#jump50").addEventListener("click", ()=> { setCycle(getCycle()+50); preview(); });
+  document.querySelector("#jump100").addEventListener("click", ()=> { setCycle(getCycle()+100); preview(); });
+  document.querySelector("#jump500").addEventListener("click", ()=> { setCycle(getCycle()+500); preview(); });
+  document.querySelector("#resetCycle").addEventListener("click", ()=> { setCycle(0); setViewOffset(0); preview(); });
+
+  document.querySelector("#disp").addEventListener("input", (e)=>{
+    setDisp(Number(e.target.value));
+    // 설정이 바뀌면 pool key가 달라지므로 preview에서 새 pool 생성/로드
+    setViewOffset(0);
+    preview();
+  });
+
+  document.querySelector("#preset").addEventListener("change", (e)=>{
+    setPreset(e.target.value);
+    setViewOffset(0);
+    preview();
+  });
+
+  document.querySelector("#poolSize").addEventListener("change", (e)=>{
+    setPoolSize(Number(e.target.value));
+    setViewOffset(0);
+    preview();
+  });
+
+  // ---------- init ----------
   async function init(){
-    const q = new URLSearchParams(location.search);
-    const qWin = Number(q.get("win"));
-    const qCycle = Number(q.get("cycle"));
-    const qSeed = (q.get("seed") || "").trim();
-    const qDisp = Number(q.get("disp"));
-
-    if ([10,20,30].includes(qWin)) WIN = qWin;
-    setLS(LS.win, String(WIN));
-    if (Number.isFinite(qCycle) && qCycle>=0) setLS(LS.cycleBase(WIN), String(Math.floor(qCycle)));
-    if (Number.isFinite(qDisp)) setDispersion(qDisp);
-
-    const savedSeed = getUserSeed();
-    const seedEl = document.querySelector("#seed");
-    seedEl.value = qSeed || savedSeed || "";
-
-    // slider init
-    document.querySelector("#disp").value = String(getDispersion());
+    const afterQP = applyQueryParams();
 
     DATA = await fetchFirstOk([
       "./data/lotto645_freq.json",
@@ -729,38 +1049,28 @@
       "../../data/lotto645_freq.json",
     ]);
 
-    // tabs render
-    document.querySelectorAll(".tab").forEach(t=>{
-      t.classList.toggle("on", Number(t.dataset.win)===WIN);
-    });
-
-    updateHeader();
-
-    // Preview (does NOT consume cycle)
-    const scored = buildScoredNumbers(WIN);
-    const scorePos = buildScorePos(scored);
-
-    const cycle = getCycle();
-    const rot = getRegenRot();
-    const baseSeed = seedString();
-    const disp = getDispersion();
-
-    const preview = [];
-    let guard = 0;
-    while (preview.length < 5 && guard < 3000){
-      guard++;
-      const arr = makeOneSet(scored, WIN, cycle + preview.length, preview.length, baseSeed, rot, disp);
-      if (!passSoftRules(arr)) continue;
-      preview.push(arr);
+    // schema mismatch notice (soft)
+    if ((DATA.schemaVersion || 0) < 3){
+      console.warn("Old schema detected. Please run update workflow once.");
     }
-    renderSets(preview, scorePos);
+
+    // reflect current UI settings
+    document.querySelector("#disp").value = String(getDisp());
+    document.querySelector("#preset").value = getPreset();
+    document.querySelector("#poolSize").value = String(getPoolSize());
+
+    preview();
+
+    if (afterQP.cnt){
+      recommend(afterQP.cnt);
+    }
   }
 
   init().catch(err=>{
     console.error(err);
-    const out = document.querySelector("#out");
-    out.innerHTML = `<div class="hint">데이터 로딩 실패: ${String(err && err.message || err)}<br/>Actions 업데이트가 아직 안 되었을 수 있어요.</div>`;
-    updateHeader();
+    document.querySelector("#out").innerHTML =
+      `<div class="hint">데이터 로딩 실패: ${String(err && err.message || err)}<br/>Actions 업데이트가 아직 안 되었을 수 있어요.</div>`;
+    updateHeader(null);
   });
 })();
 </script>
