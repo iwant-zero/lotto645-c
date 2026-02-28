@@ -32,6 +32,7 @@ jobs:
           cp -f lotto645-c/index.html dist/index.html
           cp -f data/lotto645_draws.json dist/data/lotto645_draws.json || true
           cp -f data/lotto645_freq.json dist/data/lotto645_freq.json || true
+          cp -R lotto645-c/assets dist/assets 2>/dev/null || true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
