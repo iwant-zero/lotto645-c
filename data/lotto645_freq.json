@@ -1,13 +1,13 @@
 {
   "schemaVersion": 3,
-  "updatedAt": "2026-03-07T15:48:42.836Z",
+  "updatedAt": "2026-03-08T15:49:41.581Z",
   "health": {
     "status": "ok",
     "reasons": [],
     "used": {
       "mode": "incremental",
       "sourceId": "multi",
-      "note": "gap=1"
+      "note": "gap=0"
     },
     "latestConsensus": {
       "latestNo": 1214,
@@ -31,8 +31,8 @@
           {
             "drwNo": 1214,
             "sources": [
-              "smok95-pages",
               "smok95-raw",
+              "smok95-pages",
               "smok95-jsdelivr"
             ]
           }
@@ -41,8 +41,8 @@
           {
             "sig": "1214|10,15,19,27,30,33|b14|2026-03-07",
             "sources": [
-              "smok95-pages",
               "smok95-raw",
+              "smok95-pages",
               "smok95-jsdelivr"
             ]
           }
