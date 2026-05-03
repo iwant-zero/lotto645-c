@@ -1,13 +1,13 @@
 {
   "schemaVersion": 3,
-  "updatedAt": "2026-05-02T15:58:47.203Z",
+  "updatedAt": "2026-05-03T15:59:54.153Z",
   "health": {
     "status": "ok",
     "reasons": [],
     "used": {
       "mode": "incremental",
       "sourceId": "multi",
-      "note": "gap=1"
+      "note": "gap=0"
     },
     "latestConsensus": {
       "latestNo": 1222,
