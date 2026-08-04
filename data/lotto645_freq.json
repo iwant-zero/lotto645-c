@@ -1,6 +1,6 @@
 {
   "schemaVersion": 3,
-  "updatedAt": "2026-08-03T17:17:22.482Z",
+  "updatedAt": "2026-08-04T17:00:41.876Z",
   "health": {
     "status": "ok",
     "reasons": [],
@@ -31,8 +31,8 @@
           {
             "drwNo": 1235,
             "sources": [
-              "smok95-raw",
               "smok95-pages",
+              "smok95-raw",
               "smok95-jsdelivr"
             ]
           }
@@ -41,8 +41,8 @@
           {
             "sig": "1235|6,7,11,15,39,43|b20|2026-08-01",
             "sources": [
-              "smok95-raw",
               "smok95-pages",
+              "smok95-raw",
               "smok95-jsdelivr"
             ]
           }
