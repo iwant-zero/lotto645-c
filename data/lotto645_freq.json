@@ -1,13 +1,13 @@
 {
   "schemaVersion": 3,
-  "updatedAt": "2026-08-08T15:42:41.127Z",
+  "updatedAt": "2026-08-09T15:44:03.238Z",
   "health": {
     "status": "ok",
     "reasons": [],
     "used": {
       "mode": "incremental",
       "sourceId": "multi",
-      "note": "gap=1"
+      "note": "gap=0"
     },
     "latestConsensus": {
       "latestNo": 1236,
@@ -25,19 +25,14 @@
         "bonus": 10
       },
       "agreed": true,
-      "consensusCount": 2,
+      "consensusCount": 3,
       "detail": {
         "byNo": [
           {
             "drwNo": 1236,
             "sources": [
               "smok95-pages",
-              "smok95-raw"
-            ]
-          },
-          {
-            "drwNo": 1235,
-            "sources": [
+              "smok95-raw",
               "smok95-jsdelivr"
             ]
           }
@@ -47,7 +42,8 @@
             "sig": "1236|12,18,21,29,34,38|b10|2026-08-08",
             "sources": [
               "smok95-pages",
-              "smok95-raw"
+              "smok95-raw",
+              "smok95-jsdelivr"
             ]
           }
         ]
